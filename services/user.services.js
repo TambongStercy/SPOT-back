@@ -1,13 +1,16 @@
 // userService.js
 const userModel = require('../models/userModel.js');
 
-class userService {
-    static async getUserById(userId) {
-        return await userModel.findById(userId);
-    }
-
-    
-    // Other user-related business logic...
+const getUserById = async (userId) => {
+    return await userModel.findById(userId);
 }
 
-module.exports = userService;
+const updateUserById = async (userId, updateFields) => {
+    return await userModel.findByIdAndUpdate(userId, updateFields, { new: true }).exec();
+}
+
+
+module.exports = userService = { 
+    getUserById, 
+    updateUserById 
+};

@@ -29,6 +29,7 @@ mongoose.connect(uri)
 // Routes
 const userRoutes = require('./routes/userRoutes.js')
 const authRoutes = require('./routes/authRoutes.js')
+const spotRoutes = require('./routes/spotRoutes.js')
 
 
 
@@ -41,6 +42,7 @@ app.get('/', (req, res) => {
 
 app.use('/api/user', userRoutes)
 app.use('/api/auth', authRoutes)
+app.user('/api/spots', spotRoutes)
 
 
 app.get('*',(req ,res)=>{

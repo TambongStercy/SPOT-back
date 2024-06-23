@@ -24,10 +24,9 @@ const user = new Schema({
             },
         },
     ],
-},
-    {
-        collation: { locale: 'en', strength: 2 }
-    });
+}, {
+    collation: { locale: 'en', strength: 2 }
+});
 
 
 user.methods.deleteToken = function (token) {
