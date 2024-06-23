@@ -1,4 +1,4 @@
-const spotService = require('../services/spot.services');  // Adjust the path to your spot service
+const spotService = require('../services/spot.services');  // Import the Spot service
 
 // Create a Spot
 const createSpot = async (req, res) => {
@@ -40,6 +40,7 @@ const deleteSpot = async (req, res) => {
     }
 };
 
+// Find Spots
 const findSpots = async (req, res) => {
     try {
         const { page = 1, limit = 10, ...query } = req.query;

@@ -41,11 +41,11 @@ const findSpots = async (query, page, limit) => {
         const skip = (page - 1) * limit;
         const spots = await spotModel.find(query).skip(skip).limit(limit).exec();
         const totalSpots = await spotModel.countDocuments(query).exec();
-        const pages = Math.ceil(totalSpots / limit);
+        const totalPages = Math.ceil(totalSpots / limit);
         return {
             spots,
             page,
-            pages
+            totalPages,
         };
     } catch (error) {
         console.error('Error finding spots:', error);
