@@ -1,72 +1,34 @@
-const authService = require('../services/auth.services')
+const authService = require('../services/auth.services');
 
-// Functoin to login/connect a user
-const login = async (req, res) => {
+// Controller to register a new user
+exports.register = async (req, res) => {
     try {
-        const userData = { ...req.body }
-        const { email, password } = userData
-
-        if (!email || !password) {
-            return res.status(400).json({ message: 'Please all the fields are required' })
-        }
-
-        const { user, token } = await authService.login(userData);
-
-
-        const userSend = {
-            id: user.id,
-            name: user.name,
-            email: user.email,
-            phone: user.phone,
-            dateOfBirth: user.dateOfBirth,
-        }
-
-        return res.status(200).json({ message: 'User connected successfully', token, user: userSend })
-
-
+        const { name, email, password, dateOfBirth, sex, avatar, fcmtoken } = req.body;
+        const { token, user } = await authService.register({ name, email, password, dateOfBirth, sex, avatar, fcmtoken });
+        res.json({ token, user });
+    } catch (err) {
+        res.status(400).json({ msg: err.message });
     }
-    catch (err) {
-        return res.status(400).json({ message: err.message });
-    }
-}
+};
 
-// Funcion to register a user into the system
-const register = async (req, res) => {
+// Controller to login a user
+exports.login = async (req, res) => {
     try {
-        const userData = { ...req.body }
-        const { name, phone, email, password, dateOfBirth } = userData
-
-
-        if (!name || !phone || !email || !password || !dateOfBirth) {
-            return res.status(400).json({ message: "Please all the fields are required" })
-        }
-
-        const { user, token } = await authService.register(userData);
-
-        console.log(user.token);
-
-
-        return res.status(200).json({ message: "User information save successfully", token, id: user.id })
-
+        const { email, password, fcmtoken } = req.body;
+        const { token, user } = await authService.login({ email, password, fcmtoken });
+        res.json({ token, user });
+    } catch (err) {
+        res.status(400).json({ msg: err.message });
     }
-    catch (e) {
-        console.log(e)
-        return res.status(500).json({ message: "Server error." })
-    }
-}
+};
 
-// Function to disconnect a user from its current session
-const logout = async (req, res) => {
+// Controller to logout a user
+exports.logout = async (req, res) => {
     try {
-        const userData = { ...req.body }
-
-        await authService.logout(userData)
-
-        return res.status(200).json({ message: 'logout successful' })
+        const userId = req.user.id;
+        await authService.logout(userId);
+        res.json({ msg: 'User logged out successfully' });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
     }
-    catch (err) {
-        return res.status(400).json({ message: err.message });
-    }
-}
-
-module.exports = { login, register, logout }
+};

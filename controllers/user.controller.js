@@ -1,30 +1,212 @@
-const userService = require('../services/user.services')
+const userService = require('../services/user.services');
+const otpService = require('../services/otp.services');
+const emailService = require('../services/email.services');
 
-// Functoin to login/connect a user
-const saveLocation = async (req, res) => {
+// Controller to handle general OTP requests with a reason field
+exports.requestOtp = async (req, res) => {
     try {
+        const { email, reason } = req.body;
 
-        const userData = { ...req.body }
+        // Valid reasons for OTP
+        const validReasons = ['modify-email', 'update-info', 'reset-password', 'verify-email'];
 
-        const { userId } = userData
-        const { lon, lat } = userData;  // Destructure lon and lat from userData
-        const location = { lon, lat };  // Create a new object with lon and lat
+        // Retrieve the user by email
+        const user = await userService.getUserByEmail(email);
 
+        // Generate OTP
+        const otp = await otpService.generateOtp(user._id, user.email);
 
-        if (!lon || !lat) {
-            return res.status(400).json({ message: 'Please all the fields are required' })
+        // Send the appropriate OTP email based on the reason or fallback to generic message
+        let emailContent;
+        if (validReasons.includes(reason)) {
+            switch (reason) {
+                case 'reset-password':
+                    emailContent = emailService.otpPasswordMessage(user.email, otp);
+                    break;
+                case 'update-info':
+                    emailContent = emailService.otpUpdateMessage(user.email, otp);
+                    break;
+                case 'verify-email':
+                    emailContent = emailService.otpVerifyMessage(user.email, otp);
+                    break;
+                case 'modify-email':
+                    emailContent = emailService.otpModifyEmailMessage(user.email, otp);
+                    break;
+            }
+        } else {
+            emailContent = emailService.otpMessage(user.email, otp);  // Fallback generic OTP message
         }
 
-        await userService.updateUserById(userId, location)
-
-        return res.status(200).json({ message: 'user location successfully saved' })
-
+        await emailService.sendEmail(emailContent.to, emailContent.subject, emailContent.html);
+        res.json({ msg: 'OTP sent successfully for ' + reason });
+    } catch (err) {
+        res.status(400).json({ msg: err.message });
     }
-    catch (err) {
-        return res.status(400).json({ message: err.message });
+};
+
+// Controller to reset password after OTP verification
+exports.resetPassword = async (req, res) => {
+    try {
+        const { otp, newPassword } = req.body;
+        const userId = req.user.id;  // Assuming user is authenticated
+
+        // Verify OTP
+        await otpService.verifyOtp(userId, otp);
+
+        // Reset password
+        await userService.resetPassword(userId, newPassword);
+
+        // Delete the OTP
+        await otpService.deleteOtp(userId);
+
+        res.json({ msg: 'Password reset successfully' });
+    } catch (err) {
+        res.status(400).json({ msg: err.message });
     }
-}
+};
 
+// Controller to verify email
+exports.verifyEmail = async (req, res) => {
+    try {
+        const { otp } = req.body;
+        const userId = req.user.id;
 
+        // Verify OTP
+        await otpService.verifyOtp(userId, otp);
 
-module.exports = { saveLocation }
+        // Mark email as verified
+        await userService.verifyEmail(userId);
+
+        // Delete OTP
+        await otpService.deleteOtp(userId);
+
+        res.json({ msg: 'Email verified successfully' });
+    } catch (err) {
+        res.status(400).json({ msg: err.message });
+    }
+};
+
+// Controller to modify user info (e.g., name, avatar)
+exports.modifyUserInfo = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const updates = req.body;
+
+        const user = await userService.updateUserInfo(userId, updates);
+        res.json({ msg: 'User info updated successfully', user });
+    } catch (err) {
+        res.status(400).json({ msg: err.message });
+    }
+};
+
+// Controller to modify email (after OTP verification)
+exports.modifyEmail = async (req, res) => {
+    try {
+        const { otp, newEmail } = req.body;
+        const userId = req.user.id;
+
+        // Verify OTP
+        await otpService.verifyOtp(userId, otp);
+
+        // Update email and reset verification status
+        const user = await userService.modifyEmail(userId, newEmail);
+
+        // Delete OTP
+        await otpService.deleteOtp(userId);
+
+        res.json({ msg: 'Email updated successfully', user });
+    } catch (err) {
+        res.status(400).json({ msg: err.message });
+    }
+};
+
+// Controller for updating user's location
+exports.updateLocation = async (req, res) => {
+    try {
+        const { lon, lat } = req.body;
+        const user = await userService.updateUserLocation({ userId: req.user.id, lon, lat });
+        res.json({ msg: 'Location updated successfully', location: user.location });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller for getting user's location history
+exports.getLocationHistory = async (req, res) => {
+    try {
+        const locationHistory = await userService.getUserLocationHistory(req.user.id);
+        res.json({ locationHistory });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller to upload and update the user's avatar
+exports.uploadAvatar = async (req, res) => {
+    try {
+        const userId = req.user.id;  // Assuming user authentication middleware provides the user ID
+        const file = req.file;  // Multer stores the file in req.file
+
+        if (!file) {
+            return res.status(400).json({ msg: 'No file uploaded' });
+        }
+
+        const user = await userService.uploadUserAvatar(userId, file);
+        res.json({ msg: 'Avatar uploaded successfully', avatar: user.avatar });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller to get multiple users with pagination, filters, and rankings
+exports.getUsers = async (req, res) => {
+    try {
+        const { page = 1, limit = 10, sortBy = 'points', order = 'desc', ...filters } = req.query;
+
+        const result = await userService.getUsers({
+            page: parseInt(page),
+            limit: parseInt(limit),
+            filters,
+            sortBy,
+            order
+        });
+
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller to get a user by ID
+exports.getUserById = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const user = await userService.getUserById(userId);
+        res.json(user);
+    } catch (err) {
+        res.status(404).json({ msg: err.message });
+    }
+};
+
+// Controller to update a user
+exports.updateUser = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const updates = req.body;
+        const user = await userService.updateUser(userId, updates);
+        res.json({ msg: 'User updated successfully', user });
+    } catch (err) {
+        res.status(404).json({ msg: err.message });
+    }
+};
+
+// Controller to delete a user
+exports.deleteUser = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const user = await userService.deleteUser(userId);
+        res.json({ msg: 'User deleted successfully', user });
+    } catch (err) {
+        res.status(404).json({ msg: err.message });
+    }
+};

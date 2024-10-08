@@ -1,62 +1,128 @@
-const spotService = require('../services/spot.services');  // Import the Spot service
+const spotService = require('../services/spot.services');
+const ratingService = require('../services/rating.services');
+const uploadService = require('../services/upload.services');
 
-// Create a Spot
-const createSpot = async (req, res) => {
+// Controller to create a new spot
+exports.createSpot = async (req, res) => {
     try {
-        const spotData = req.body;
-        const newSpot = await spotService.createSpot(spotData);
-        res.status(201).json(newSpot);
-    } catch (error) {
-        res.status(500).json({ message: 'Error creating spot', error });
-    }
-};
+        const { files, body } = req;
 
-// Update a Spot
-const updateSpot = async (req, res) => {
-    try {
-        const spotId = req.params.id;
-        const updateFields = req.body;
-        const updatedSpot = await spotService.updateSpotById(spotId, updateFields);
-        if (!updatedSpot) {
-            return res.status(404).json({ message: 'Spot not found' });
+        // Upload cover image, profile image, and menu images to the cloud
+        let coverImageUrl, profileImageUrl, menuImagesUrls = [];
+        
+        if (files.coverImage) {
+            coverImageUrl = await uploadService.uploadToCloudinary(files.coverImage[0]);
         }
-        res.status(200).json(updatedSpot);
-    } catch (error) {
-        res.status(500).json({ message: 'Error updating spot', error });
-    }
-};
-
-// Delete a Spot
-const deleteSpot = async (req, res) => {
-    try {
-        const spotId = req.params.id;
-        const deletedSpot = await spotService.deleteSpotById(spotId);
-        if (!deletedSpot) {
-            return res.status(404).json({ message: 'Spot not found' });
+        if (files.profileImage) {
+            profileImageUrl = await uploadService.uploadToCloudinary(files.profileImage[0]);
         }
-        res.status(200).json(deletedSpot);
-    } catch (error) {
-        res.status(500).json({ message: 'Error deleting spot', error });
+        if (files.menuImages) {
+            for (const file of files.menuImages) {
+                const imageUrl = await uploadService.uploadToCloudinary(file);
+                menuImagesUrls.push(imageUrl);
+            }
+        }
+
+        // Create the new spot with the uploaded image URLs
+        const newSpot = await spotService.createSpot({
+            ...body,
+            coverImage: coverImageUrl,
+            profileImage: profileImageUrl,
+            menuImages: menuImagesUrls
+        });
+
+        res.json(newSpot);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
     }
 };
 
-// Find Spots
-const findSpots = async (req, res) => {
+// Controller to update a spot by ID
+exports.updateSpot = async (req, res) => {
     try {
-        const { page = 1, limit = 10, ...query } = req.query;
-        const parsedPage = parseInt(page, 10);
-        const parsedLimit = parseInt(limit, 10);
+        const { files, body, params } = req;
 
-        const result = await spotService.findSpots(query, parsedPage, parsedLimit);
-        res.status(200).json(result);
-    } catch (error) {
-        res.status(500).json({ message: 'Error finding spots', error: error.message });
+        let updates = { ...body };
+        
+        // If there are new images uploaded, update them
+        if (files.coverImage) {
+            updates.coverImage = await uploadService.uploadToCloudinary(files.coverImage[0]);
+        }
+        if (files.profileImage) {
+            updates.profileImage = await uploadService.uploadToCloudinary(files.profileImage[0]);
+        }
+        if (files.menuImages) {
+            updates.menuImages = [];
+            for (const file of files.menuImages) {
+                const imageUrl = await uploadService.uploadToCloudinary(file);
+                updates.menuImages.push(imageUrl);
+            }
+        }
+
+        // Update the spot
+        const updatedSpot = await spotService.updateSpot({ spotId: params.id, updates });
+        res.json(updatedSpot);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
     }
 };
 
-module.exports = {
-    createSpot,
-    updateSpot,
-    deleteSpot,
-    findSpots,
+// Controller to get all spots
+exports.getSpots = async (req, res) => {
+    try {
+        const spots = await spotService.getSpots();
+        res.json(spots);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller to get a spot by its ID
+exports.getSpotById = async (req, res) => {
+    try {
+        const spot = await spotService.getSpotById(req.params.id);
+        if (!spot) return res.status(404).json({ msg: 'Spot not found' });
+        res.json(spot);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller for getting paginated spots with filters
+exports.getFilteredSpots = async (req, res) => {
+    try {
+        const { page = 1, limit = 10, ...filters } = req.query;  // Extract pagination and filters from query params
+
+        const spots = await spotService.getFilteredSpots({ page, limit, filters });
+        res.json(spots);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+
+// Controller to rate a spot
+exports.rateSpot = async (req, res) => {
+    try {
+        const { rating, review } = req.body;
+        const ratedSpot = await ratingService.rateSpot({
+            spotId: req.params.id,
+            userId: req.user.id,
+            rating,
+            review
+        });
+        res.json(ratedSpot);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller to get all ratings for a spot
+exports.getSpotRatings = async (req, res) => {
+    try {
+        const ratings = await ratingService.getRatingsForSpot(req.params.id);
+        res.json(ratings);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
 };

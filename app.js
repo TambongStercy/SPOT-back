@@ -1,73 +1,17 @@
-require('dotenv').config()
-const express = require('express')
-const cors = require('cors')
-const path = require('path')
-const bodyParser = require('body-parser')
-const cookieParser = require('cookie-parser')
-const mongoose = require('mongoose')
-const app = express()
+const express = require('express');
+const connectDB = require('./config/db');
+const dotenv = require('dotenv');
 
-// Initial configurations
-app.use(cookieParser());
-app.use(cors())
-app.use(bodyParser.urlencoded({ extended: true }))
-app.use(bodyParser.json())
+dotenv.config();
+connectDB();
 
-// Mongo DB connection
-// const uri = process.env.MONGODB_URI
+const app = express();
+app.use(express.json());
 
-const uri = 'mongodb://127.0.0.1:27017/SPOTT'
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/user', require('./routes/userRoutes'));
+app.use('/api/spots', require('./routes/spotRoutes'));
+app.use('/api/reservations', require('./routes/reservationRoutes'));
 
-mongoose.connect(uri)
-    .then(con => {
-        console.log('DB connection successfull ')
-    })
-    .catch(e => {
-        console.log('Error with the db connection ' + e)
-    })
-
-// Routes
-const userRoutes = require('./routes/userRoutes.js')
-const authRoutes = require('./routes/authRoutes.js')
-const spotRoutes = require('./routes/spotRoutes.js')
-
-
-
-app.use(express.static('public'));
-app.use('/frames', express.static('frames'));
-
-app.get('/', (req, res) => {
-    res.send("Welcome to spott backend")
-})
-
-app.use('/api/user', userRoutes)
-app.use('/api/auth', authRoutes)
-app.user('/api/spots', spotRoutes)
-
-
-app.get('*',(req ,res)=>{
-    res.send("Not Found")
-})
-
-
-// Your function that runs at the beginning
-async function initializeServer() {
-    console.log('Server is initializing...');
-
-    // downloadPpDrive()
-}
-
-// Call the initialization function
-initializeServer()
-    .then(() => {
-        // Set up your routes and other server configurations
-        app.listen(5000, () => {
-            console.log('Server is running on port 5000');
-        });
-    })
-    .catch(error => {
-        console.error('Error during server initialization:', error);
-    });
-
-
-
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

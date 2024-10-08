@@ -1,62 +1,90 @@
-const spotModel = require('../models/spotModel.js');
+const Spot = require('../models/Spot');
 
 
-// Create a Spot
-const createSpot = async (spotData) => {
-    try {
-        const spot = new spotModel(spotData);
-        const savedSpot = await spot.save();
-        return savedSpot;
-    } catch (error) {
-        console.error('Error creating spot:', error);
-        throw error;
-    }
+// Service to create a new spot
+exports.createSpot = async ({ name, description, menuImages, town, contacts, type, location, budget, coverImage, profileImage, openingTimes }) => {
+    const newSpot = new Spot({
+        name,
+        description,
+        menuImages,
+        town,
+        contacts,
+        type,
+        location: {
+            type: 'Point',
+            coordinates: [location.lon, location.lat]
+        },
+        budget,
+        coverImage,
+        profileImage,
+        openingTimes
+    });
+
+    await newSpot.save();
+    return newSpot;
 };
 
-// Update a Spot
-const updateSpotById = async (spotId, updateFields) => {
-    try {
-        const updatedSpot = await spotModel.findByIdAndUpdate(spotId, updateFields, { new: true }).exec();
-        return updatedSpot;
-    } catch (error) {
-        console.error('Error updating spot:', error);
-        throw error;
-    }
+// Service to update a spot by ID
+exports.updateSpot = async ({ spotId, updates }) => {
+    const updatedSpot = await Spot.findByIdAndUpdate(spotId, updates, { new: true });
+    return updatedSpot;
 };
 
-// Delete a Spot
-const deleteSpotById = async (spotId) => {
-    try {
-        const deletedSpot = await spotModel.findByIdAndDelete(spotId).exec();
-        return deletedSpot;
-    } catch (error) {
-        console.error('Error deleting spot:', error);
-        throw error;
-    }
+// Service to get all spots
+exports.getSpots = async () => {
+    const spots = await Spot.find({});
+    return spots;
 };
 
-// Find Spots with Pagination
-const findSpots = async (query, page, limit) => {
-    try {
-        const skip = (page - 1) * limit;
-        const spots = await spotModel.find(query).skip(skip).limit(limit).exec();
-        const totalSpots = await spotModel.countDocuments(query).exec();
-        const totalPages = Math.ceil(totalSpots / limit);
-        return {
-            spots,
-            page,
-            totalPages,
+// Service to get a spot by its ID
+exports.getSpotById = async (spotId) => {
+    const spot = await Spot.findById(spotId);
+    return spot;
+};
+
+
+// Service to get paginated spots with filters
+exports.getFilteredSpots = async ({ page, limit, filters }) => {
+    const query = {};
+
+    // Apply filters if they exist
+    if (filters.name) query.name = { $regex: filters.name, $options: 'i' };  // Case-insensitive search
+    if (filters.town) query.town = { $regex: filters.town, $options: 'i' };
+    if (filters.contacts) query.contacts = filters.contacts;
+    if (filters.type) query.type = filters.type;
+    if (filters.budget) query.budget = { $lte: filters.budget };  // Max budget
+
+    // Handle ratings (get spots with average rating greater than or equal to the filter)
+    if (filters.ratings) {
+        query['ratings.rating'] = { $gte: filters.ratings };
+    }
+
+    // Location-based filter (if you have longitude and latitude)
+    if (filters.lon && filters.lat) {
+        const maxDistanceInKm = 20 * 1000;  // Convert 20 km to meters
+        query.location = {
+            $near: {
+                $geometry: {
+                    type: 'Point',
+                    coordinates: [parseFloat(filters.lon), parseFloat(filters.lat)]
+                },
+                $maxDistance: maxDistanceInKm
+            }
         };
-    } catch (error) {
-        console.error('Error finding spots:', error);
-        throw error;
     }
-};
 
+    // Paginate results
+    const spots = await Spot.find(query)
+        .limit(parseInt(limit))
+        .skip((parseInt(page) - 1) * parseInt(limit))
+        .exec();
 
-module.exports = {
-    createSpot,
-    updateSpotById,
-    deleteSpotById,
-    findSpots,
+    // Get total count for pagination
+    const total = await Spot.countDocuments(query);
+
+    return {
+        totalPages: Math.ceil(total / limit),
+        currentPage: parseInt(page),
+        spots
+    };
 };

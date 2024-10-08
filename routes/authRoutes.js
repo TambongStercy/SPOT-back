@@ -1,19 +1,16 @@
-const express = require('express')
-const router = express.Router()
+const express = require('express');
+const { register, login, logout } = require('../controllers/auth.controller');
+const authenticateUser = require('../middleware/auth');  // Middleware to check if user is authenticated
+const router = express.Router();
 
-// Controllers
-const {
-    register, 
-    login, 
-    logout,
-} = require('../controllers/auth.controller.js')
+// Register a new user
+router.post('/register', register);
 
+// Login a user
+router.post('/login', login);
 
-
-router.route('/register').post(register)
-router.route('/login').post(login)
-router.route('/logout').post(logout)
+// Logout a user (requires authentication)
+router.post('/logout', authenticateUser, logout);
 
 
-// getRefferedUsers
-module.exports = router
+module.exports = router;
