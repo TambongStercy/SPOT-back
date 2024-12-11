@@ -1,92 +1,68 @@
-const express = require('express')
-const router = express.Router()
+const express = require('express');
+const router = express.Router();
 const multer = require('multer');
-const fs = require('fs').promises
-
-const storage = multer.diskStorage({
-    destination: async function (req, file, cb) {
-
-
-        const email = req.body.email ?? '';
-        const directoryPath = 'public/Profile Pictures/' + email
-
-        // Ensure the directory structure exists
-        await fs.mkdir(directoryPath, { recursive: true })
-
-
-        cb(null, directoryPath);
-    },
-    filename: function (req, file, cb) {
-        cb(null, file.originalname);
-    }
-});
-
-const upload = multer({ storage: storage });
-
-// Controllers
 const {
-    updateLocation, getLocationHistory, uploadAvatar, getUsers,
-    getUserById, updateUser, deleteUser, requestOtp, 
-    resetPassword, verifyEmail, modifyUserInfo, modifyEmail
-} = require('../controllers/user.controller.js')
+    requestOtp,
+    resetPassword,
+    verifyEmail,
+    modifyUserInfo,
+    modifyEmail,
+    updateLocation,
+    getLocationHistory,
+    uploadAvatar,
+    getUsers,
+    getUserById,
+    updateUser,
+    deleteUser,
+} = require('../controllers/user.controller');
+const {
+    validateRequestOtp,
+    validateResetPassword,
+    validateVerifyEmail,
+    validateModifyUserInfo,
+    validateModifyEmail,
+    validateUpdateLocation,
+    validateUploadAvatar,
+    validateGetUsers,
+} = require('../middleware/userValidation');
+const authenticateUser = require('../middleware/auth'); // Authentication middleware
 
-const { addFavorite, removeFavorite, getFavorites } = require('../controllers/favorite.controller.js');
+const upload = multer({ dest: 'uploads/' }); // Temporary storage for uploaded files
 
-const { testPost, testGet } = require('../controllers/test.controller.js')
-const authenticateUser = require('../middleware/auth');  // Import the authentication middleware
+// Route to request an OTP
+router.post('/request-otp', validateRequestOtp, requestOtp);
 
-// Request OTP (general purpose, for reset password, email verification, etc.)
-router.post('/request-otp', requestOtp);
+// Route to reset password
+router.post('/reset-password', authenticateUser, validateResetPassword, resetPassword);
 
-// Reset password (after OTP verification)
-router.post('/reset-password', authenticateUser, resetPassword);
+// Route to verify email
+router.post('/verify-email', authenticateUser, validateVerifyEmail, verifyEmail);
 
-// Verify email
-router.post('/verify-email', authenticateUser, verifyEmail);
+// Route to modify user information
+router.put('/modify-info', authenticateUser, validateModifyUserInfo, modifyUserInfo);
 
-// Modify user info (e.g., name, avatar)
-router.put('/modify-info', authenticateUser, modifyUserInfo);
+// Route to modify email
+router.put('/modify-email', authenticateUser, validateModifyEmail, modifyEmail);
 
-// Modify email (after OTP verification)
-router.put('/modify-email', authenticateUser, modifyEmail);
+// Route to update user location
+router.put('/location', authenticateUser, validateUpdateLocation, updateLocation);
 
-
-// Route to get multiple users with pagination, filters, and rankings
-router.get('/', authenticateUser, getUsers);
-
-// Get a user by ID
-router.get('/:id', authenticateUser, getUserById);
-
-// Update a user by ID
-router.put('/:id', authenticateUser, updateUser);
-
-// Delete a user by ID
-router.delete('/:id', authenticateUser, deleteUser);
-
-
-// Route for updating the user's location
-router.put('/location', authenticateUser, updateLocation);
-
-
-// Route to upload a user's avatar (requires authentication)
-router.post('/avatar', authenticateUser, upload.single('avatar'), uploadAvatar);
-
-
-// Route for retrieving the user's location history
+// Route to get location history
 router.get('/location-history', authenticateUser, getLocationHistory);
 
-// Route to add a spot to the user's favorites
-router.post('/favorites/add', authenticateUser, addFavorite);
+// Route to upload avatar
+router.post('/avatar', authenticateUser, upload.single('avatar'), validateUploadAvatar, uploadAvatar);
 
-// Route to remove a spot from the user's favorites
-router.post('/favorites/remove', authenticateUser, removeFavorite);
+// Route to get users with pagination and filters
+router.get('/', authenticateUser, validateGetUsers, getUsers);
 
-// Route to get all favorite spots for the user
-router.get('/favorites', authenticateUser, getFavorites);
+// Route to get a user by ID
+router.get('/:id', authenticateUser, getUserById);
 
+// Route to update a user
+router.put('/:id', authenticateUser, updateUser);
 
-router.route('/test').post(testPost)
-router.route('/test').get(testGet)
+// Route to delete a user
+router.delete('/:id', authenticateUser, deleteUser);
 
-// getRefferedUsers
-module.exports = router
+module.exports = router;

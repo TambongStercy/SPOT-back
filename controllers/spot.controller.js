@@ -100,7 +100,6 @@ exports.getFilteredSpots = async (req, res) => {
     }
 };
 
-
 // Controller to rate a spot
 exports.rateSpot = async (req, res) => {
     try {

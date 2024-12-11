@@ -43,22 +43,22 @@ exports.otpPasswordMessage = (email, otp) => {
 
 // Function to generate the OTP email for profile update confirmation
 exports.otpUpdateMessage = (email, otp) => {
-    return {
-        from: '"SPOTT App" <noreply@spottapp.com>',
-        to: email,
-        subject: 'Profile Update OTP',
-        html: `<div style="font-family: Helvetica, Arial, sans-serif; min-width: 1000px; overflow: auto; line-height: 2;">
-            <div style="margin: 50px auto; width: 70%; padding: 20px 0;">
-              <div style="border-bottom: 1px solid #eee;">
-                <a href="" style="font-size: 1.4em; color: #3AB091; text-decoration: none; font-weight: 600;">SPOTT</a>
-              </div>
-              <p style="font-size: 1.1em;">Hello,</p>
-              <p>Use the following OTP to confirm your profile update. The OTP is valid for 30 minutes.</p>
-              <h2 style="background: #3AB091; margin: 0 auto; width: max-content; padding: 0 10px; color: #fff; border-radius: 4px;">${otp}</h2>
-              <p>Best regards,<br />SPOTT Team</p>
+  return {
+      from: '"SPOTT App" <noreply@spottapp.com>',
+      to: email,
+      subject: 'Profile Update OTP',
+      html: `<div style="font-family: Helvetica, Arial, sans-serif; min-width: 1000px; overflow: auto; line-height: 2;">
+          <div style="margin: 50px auto; width: 70%; padding: 20px 0;">
+            <div style="border-bottom: 1px solid #eee;">
+              <a href="" style="font-size: 1.4em; color: #3AB091; text-decoration: none; font-weight: 600;">SPOTT</a>
             </div>
-          </div>`
-    };
+            <p style="font-size: 1.1em;">Hello,</p>
+            <p>Use the following OTP to confirm your profile update. The OTP is valid for 30 minutes.</p>
+            <h2 style="background: #3AB091; margin: 0 auto; width: max-content; padding: 0 10px; color: #fff; border-radius: 4px;">${otp}</h2>
+            <p>Best regards,<br />SPOTT Team</p>
+          </div>
+        </div>`
+  };
 };
 
 // Function to generate the OTP email for email verification

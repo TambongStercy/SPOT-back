@@ -92,3 +92,5 @@ exports.getEndedEvents = async ({ page = 1, limit = 10, filters }) => {
         events
     };
 };
+
+
