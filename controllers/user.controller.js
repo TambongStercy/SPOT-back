@@ -123,10 +123,32 @@ exports.modifyEmail = async (req, res) => {
 // Controller for updating user's location
 exports.updateLocation = async (req, res) => {
     try {
-        const { lon, lat } = req.body;
-        const user = await userService.updateUserLocation({ userId: req.user.id, lon, lat });
-        res.json({ msg: 'Location updated successfully', location: user.location });
+        const { lon, lat, fcmToken } = req.body;
+        
+        if (!fcmToken) {
+            return res.status(400).json({ msg: 'FCM Token is required' });
+        }
+
+        const result = await userService.updateUserLocation({ 
+            userId: req.user.id, 
+            fcmToken,
+            lon, 
+            lat
+        });
+
+        res.json({ 
+            msg: 'Location updated successfully', 
+            location: result.locationHistory,
+            userLocation: result.user.location
+        });
     } catch (err) {
+        // Handle specific error cases
+        if (err.message.includes('Device not found')) {
+            return res.status(404).json({ msg: err.message });
+        }
+        if (err.message.includes('not registered to your account')) {
+            return res.status(403).json({ msg: err.message });
+        }
         res.status(500).json({ msg: err.message });
     }
 };
@@ -134,8 +156,29 @@ exports.updateLocation = async (req, res) => {
 // Controller for getting user's location history
 exports.getLocationHistory = async (req, res) => {
     try {
-        const locationHistory = await userService.getUserLocationHistory(req.user.id);
+        const { startDate, endDate, limit, fcmToken } = req.query;
+        
+        const locationHistory = await userService.getUserLocationHistory(
+            req.user.id,
+            {
+                startDate,
+                endDate,
+                limit: limit ? parseInt(limit) : undefined,
+                fcmToken
+            }
+        );
+        
         res.json({ locationHistory });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller for getting latest locations for all user's devices
+exports.getDevicesLatestLocations = async (req, res) => {
+    try {
+        const latestLocations = await userService.getUserDevicesLatestLocations(req.user.id);
+        res.json({ latestLocations });
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }
@@ -208,5 +251,38 @@ exports.deleteUser = async (req, res) => {
         res.json({ msg: 'User deleted successfully', user });
     } catch (err) {
         res.status(404).json({ msg: err.message });
+    }
+};
+
+// Controller for updating user's current location only
+exports.updateCurrentLocation = async (req, res) => {
+    try {
+        const { lon, lat, fcmToken } = req.body;
+        
+        if (!fcmToken) {
+            return res.status(400).json({ msg: 'FCM Token is required' });
+        }
+
+        const result = await userService.updateUserCurrentLocation({ 
+            userId: req.user.id, 
+            fcmToken,
+            lon, 
+            lat
+        });
+
+        res.json({ 
+            msg: 'Location updated successfully', 
+            currentLocation: result.currentLocation,
+            userLocation: result.user.location
+        });
+    } catch (err) {
+        // Handle specific error cases
+        if (err.message.includes('Device not found')) {
+            return res.status(404).json({ msg: err.message });
+        }
+        if (err.message.includes('not registered to your account')) {
+            return res.status(403).json({ msg: err.message });
+        }
+        res.status(500).json({ msg: err.message });
     }
 };

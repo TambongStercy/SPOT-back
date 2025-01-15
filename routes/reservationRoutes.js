@@ -1,6 +1,6 @@
 const express = require('express');
 const { createReservation } = require('../controllers/reservation.controller');
-const authenticateUser = require('../middleware/auth'); // Authentication middleware
+const {authenticateUser} = require('../middleware/auth'); // Authentication middleware
 const { validateCreateReservation } = require('../middleware/reservationValidation'); // Validation middleware
 
 const router = express.Router();

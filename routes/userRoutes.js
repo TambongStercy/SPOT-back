@@ -14,6 +14,7 @@ const {
     getUserById,
     updateUser,
     deleteUser,
+    updateCurrentLocation,
 } = require('../controllers/user.controller');
 const {
     validateRequestOtp,
@@ -24,8 +25,19 @@ const {
     validateUpdateLocation,
     validateUploadAvatar,
     validateGetUsers,
+    validateGetFavorites,
+    validateFavoriteSpotOperation,
+    validateFavoriteEventOperation,
 } = require('../middleware/userValidation');
-const authenticateUser = require('../middleware/auth'); // Authentication middleware
+const { authenticateUser, optionalAuthenticateUser } = require('../middleware/auth'); // Import the specific function
+const {
+    addFavorite,
+    removeFavorite,
+    getFavorites,
+    addFavoriteEvent,
+    removeFavoriteEvent,
+    getFavoriteEvents
+} = require('../controllers/favorite.controller');
 
 const upload = multer({ dest: 'uploads/' }); // Temporary storage for uploaded files
 
@@ -46,6 +58,9 @@ router.put('/modify-email', authenticateUser, validateModifyEmail, modifyEmail);
 
 // Route to update user location
 router.put('/location', authenticateUser, validateUpdateLocation, updateLocation);
+// Route to update user current location (without history)
+router.post('/location/current', authenticateUser, validateUpdateLocation, updateCurrentLocation);
+
 
 // Route to get location history
 router.get('/location-history', authenticateUser, getLocationHistory);
@@ -64,5 +79,15 @@ router.put('/:id', authenticateUser, updateUser);
 
 // Route to delete a user
 router.delete('/:id', authenticateUser, deleteUser);
+
+// Favorite spots routes
+router.get('/favorites/spots', authenticateUser, validateGetFavorites, getFavorites);
+router.post('/favorites/spots/:spotId', authenticateUser, validateFavoriteSpotOperation, addFavorite);
+router.delete('/favorites/spots/:spotId', authenticateUser, validateFavoriteSpotOperation, removeFavorite);
+
+// Favorite events routes
+router.get('/favorites/events', authenticateUser, validateGetFavorites, getFavoriteEvents);
+router.post('/favorites/events/:eventId', authenticateUser, validateFavoriteEventOperation, addFavoriteEvent);
+router.delete('/favorites/events/:eventId', authenticateUser, validateFavoriteEventOperation, removeFavoriteEvent);
 
 module.exports = router;

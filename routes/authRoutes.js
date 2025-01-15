@@ -1,16 +1,46 @@
 const express = require('express');
-const { register, login, logout } = require('../controllers/auth.controller');
-const authenticateUser = require('../middleware/auth'); // Authentication middleware
-const { validateRegister, validateLogin } = require('../middleware/authValidation'); // Validation middleware
 const router = express.Router();
+const auth = require('../middleware/auth');
+const {
+    register,
+    login,
+    verifyPhone,
+    logout,
+    logoutAll,
+    forgotPassword,
+    verifyForgotPasswordOtp,
+    resetForgotPassword,
+    requestEmailVerification,
+    verifyEmail,
+    changePassword,
+    refreshToken,
+    getUserDevices
+} = require('../controllers/auth.controller');
+const {
+    validateRegister,
+    validateLogin,
+    validateForgotPassword,
+    validateEmailVerification,
+    validatePhoneVerification,
+    validateChangePassword
+} = require('../middleware/authValidation');
 
-// Register a new user
+// Public routes
 router.post('/register', validateRegister, register);
+router.post('/login', validateLogin, auth.loginLimiter, login);
+router.post('/refresh-token', auth.refreshTokenLimiter, auth.validateRefreshToken, refreshToken);
+router.post('/forgot-password', validateForgotPassword, forgotPassword);
+router.post('/verify-forgot-password', verifyForgotPasswordOtp);
+router.post('/reset-forgot-password', resetForgotPassword);
+router.post('/request-email-verification', validateEmailVerification, requestEmailVerification);
+// router.post('/request-phone-verification', validatePhoneVerification, requestPhoneVerification);
+router.post('/verify-email', validateEmailVerification, verifyEmail);
+router.post('/verify-phone', validatePhoneVerification, verifyPhone);
 
-// Login a user
-router.post('/login', validateLogin, login);
-
-// Logout a user (requires authentication)
-router.post('/logout', authenticateUser, logout);
+// Protected routes (require authentication)
+router.post('/logout', auth.authenticateUser, logout);
+router.post('/logout-all', auth.authenticateUser, logoutAll);
+router.get('/devices', auth.authenticateUser, getUserDevices);
+router.post('/change-password', auth.authenticateUser, validateChangePassword, changePassword);
 
 module.exports = router;

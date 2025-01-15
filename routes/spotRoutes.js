@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const {
     createSpot,
     getSpots,
@@ -7,14 +8,17 @@ const {
     rateSpot,
     getSpotRatings,
     updateSpot,
+    getNearbySpots,
 } = require('../controllers/spot.controller');
-const authenticateUser = require('../middleware/auth'); // Authentication middleware
-const upload = require('../middleware/upload'); // Multer middleware for file uploads
+const { authenticateUser, optionalAuthenticateUser } = require('../middleware/auth');
+const upload = multer({ dest: 'uploads/' });
+const { cache } = require('../config/redis');
+
 const {
     validateSpot,
     validateFilterSpots,
     validateRateSpot,
-} = require('../middleware/spotValidation'); // Validation middleware
+} = require('../middleware/spotValidation');
 
 const router = express.Router();
 
@@ -31,6 +35,12 @@ router.post(
     createSpot
 );
 
+// Route to get paginated and filtered spots (Cached for 5 minutes)
+router.get('/', optionalAuthenticateUser, cache(300), validateFilterSpots, getFilteredSpots);
+
+// Route to get a spot by its ID (Cached for 5 minutes)
+router.get('/:id', optionalAuthenticateUser, cache(300), getSpotById);
+
 // Route to update a spot with image uploads
 router.put(
     '/:id',
@@ -44,16 +54,14 @@ router.put(
     updateSpot
 );
 
-// Route to get a spot by its ID (No validation needed)
-router.get('/:id', getSpotById);
-
-// Route to get paginated and filtered spots
-router.get('/', validateFilterSpots, getFilteredSpots);
-
 // Route to rate a spot
 router.post('/:id/rate', authenticateUser, validateRateSpot, rateSpot);
 
-// Route to get all ratings for a spot (No validation needed)
-router.get('/:id/ratings', getSpotRatings);
+// Route to get all ratings for a spot (Cached for 5 minutes)
+router.get('/:id/ratings', cache(300), getSpotRatings);
+
+
+router.get('/nearby', optionalAuthenticateUser, getNearbySpots);
+
 
 module.exports = router;

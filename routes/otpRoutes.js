@@ -4,7 +4,7 @@ const {
     verifyOtp,
     deleteOtp,
 } = require('../controllers/otp.controller');
-const authenticateUser = require('../middleware/auth'); // Authentication middleware
+const {authenticateUser} = require('../middleware/auth'); // Authentication middleware
 const {
     validateGenerateOtp,
     validateVerifyOtp,

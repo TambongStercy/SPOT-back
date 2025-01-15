@@ -1,7 +1,7 @@
 const Joi = require('joi');
 
 // Validation schema for requesting an OTP
-const validateRequestOtp = (req, res, next) => {
+exports.validateRequestOtp = (req, res, next) => {
     const schema = Joi.object({
         email: Joi.string().email().required(),
         reason: Joi.string()
@@ -18,7 +18,7 @@ const validateRequestOtp = (req, res, next) => {
 };
 
 // Validation schema for resetting a password
-const validateResetPassword = (req, res, next) => {
+exports.validateResetPassword = (req, res, next) => {
     const schema = Joi.object({
         otp: Joi.string().length(6).required(),
         newPassword: Joi.string().min(8).required(),
@@ -33,7 +33,7 @@ const validateResetPassword = (req, res, next) => {
 };
 
 // Validation schema for verifying an email
-const validateVerifyEmail = (req, res, next) => {
+exports.validateVerifyEmail = (req, res, next) => {
     const schema = Joi.object({
         otp: Joi.string().length(6).required(),
     });
@@ -47,7 +47,7 @@ const validateVerifyEmail = (req, res, next) => {
 };
 
 // Validation schema for modifying user info
-const validateModifyUserInfo = (req, res, next) => {
+exports.validateModifyUserInfo = (req, res, next) => {
     const schema = Joi.object({
         name: Joi.string().min(3).max(50).optional(),
         avatar: Joi.string().uri().optional(),
@@ -63,7 +63,7 @@ const validateModifyUserInfo = (req, res, next) => {
 };
 
 // Validation schema for modifying email
-const validateModifyEmail = (req, res, next) => {
+exports.validateModifyEmail = (req, res, next) => {
     const schema = Joi.object({
         otp: Joi.string().length(6).required(),
         newEmail: Joi.string().email().required(),
@@ -78,10 +78,11 @@ const validateModifyEmail = (req, res, next) => {
 };
 
 // Validation schema for updating user location
-const validateUpdateLocation = (req, res, next) => {
+exports.validateUpdateLocation = (req, res, next) => {
     const schema = Joi.object({
         lon: Joi.number().required(),
         lat: Joi.number().required(),
+        fcmToken: Joi.string().required(),
     });
 
     const { error } = schema.validate(req.body);
@@ -93,7 +94,7 @@ const validateUpdateLocation = (req, res, next) => {
 };
 
 // Validation schema for uploading an avatar
-const validateUploadAvatar = (req, res, next) => {
+exports.validateUploadAvatar = (req, res, next) => {
     if (!req.file) {
         return res.status(400).json({ msg: 'Avatar file is required' });
     }
@@ -101,7 +102,7 @@ const validateUploadAvatar = (req, res, next) => {
 };
 
 // Validation schema for paginated user list with filters
-const validateGetUsers = (req, res, next) => {
+exports.validateGetUsers = (req, res, next) => {
     const schema = Joi.object({
         page: Joi.number().integer().min(1).optional(),
         limit: Joi.number().integer().min(1).optional(),
@@ -119,13 +120,58 @@ const validateGetUsers = (req, res, next) => {
     next();
 };
 
-module.exports = {
-    validateRequestOtp,
-    validateResetPassword,
-    validateVerifyEmail,
-    validateModifyUserInfo,
-    validateModifyEmail,
-    validateUpdateLocation,
-    validateUploadAvatar,
-    validateGetUsers,
+// Validate favorite spot operations
+exports.validateFavoriteSpotOperation = (req, res, next) => {
+    const schema = Joi.object({
+        spotId: Joi.string().required().messages({
+            'string.empty': 'Spot ID is required',
+            'any.required': 'Spot ID is required'
+        }),
+        userId: Joi.string().optional().messages({
+            'string.empty': 'User ID is required',
+            'any.required': 'User ID is required'
+        })
+    });
+
+    const { error } = schema.validate(req.params);
+    if (error) {
+        return res.status(400).json({ msg: error.details[0].message });
+    }
+    next();
 };
+
+// Validate favorite event operations
+exports.validateFavoriteEventOperation = (req, res, next) => {
+    const schema = Joi.object({
+        eventId: Joi.string().required().messages({
+            'string.empty': 'Event ID is required',
+            'any.required': 'Event ID is required'
+        }),
+        userId: Joi.string().optional().messages({
+            'string.empty': 'User ID is required',
+            'any.required': 'User ID is required'
+        })
+    });
+
+    const { error } = schema.validate(req.params);
+    if (error) {
+        return res.status(400).json({ msg: error.details[0].message });
+    }
+    next();
+};
+
+// Validate get favorites query parameters
+exports.validateGetFavorites = (req, res, next) => {
+    const schema = Joi.object({
+        page: Joi.number().integer().min(1).default(1),
+        limit: Joi.number().integer().min(1).max(100).default(10)
+    });
+
+    const { error } = schema.validate(req.query);
+    if (error) {
+        return res.status(400).json({ msg: error.details[0].message });
+    }
+    next();
+};
+
+

@@ -1,0 +1,2292 @@
+openapi: 3.0.0
+info:
+  title: SPOTT App API
+  description: |
+    API documentation for SPOTT application.
+    
+    ## API Versioning
+    The API uses URL versioning with the format: `/api/v1/[resource]`
+    - Current version: v1
+    - All endpoints should be prefixed with `/api/v1`
+    
+    ## Authentication
+    The API uses a dual token system:
+    1. Access Token: Short-lived JWT token (15 minutes) for API authentication
+    2. FCM Token: Used as a refresh token to obtain new access tokens
+    
+    Authentication flow:
+    1. Login/Register to receive an access token
+    2. Use access token in Authorization header
+    3. When access token expires, use FCM token to get a new one
+    4. Manage devices and sessions through device management endpoints
+    
+    ## Rate Limiting
+    - Login: 5 attempts per 15 minutes per IP
+    - Token refresh: 100 requests per 15 minutes per IP
+    - General API: 100 requests per 15 minutes per IP
+    
+    ## Caching
+    - GET endpoints are cached for 5 minutes when Redis is enabled
+    - Cache can be disabled via ENABLE_REDIS environment variable
+  version: 1.0.0
+  contact:
+    email: support@spottapp.com
+
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Development server (v1)
+  - url: https://api.spottapp.com/api/v1
+    description: Production server (v1)
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+        sex:
+          type: string
+          enum: [Male, Female]
+        avatar:
+          type: string
+        verifiedEmail:
+          type: boolean
+        fcmtoken:
+          type: string
+
+    Error:
+      type: object
+      properties:
+        msg:
+          type: string
+
+    Spot:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        menuImages:
+          type: array
+          items:
+            type: string
+        town:
+          type: string
+        contacts:
+          type: object
+          properties:
+            phone:
+              type: string
+            email:
+              type: string
+        type:
+          type: string
+        location:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [Point]
+            coordinates:
+              type: array
+              items:
+                type: number
+        budget:
+          type: string
+        coverImage:
+          type: string
+        profileImage:
+          type: string
+        openingTimes:
+          type: object
+          properties:
+            monday:
+              $ref: '#/components/schemas/OpeningHours'
+            tuesday:
+              $ref: '#/components/schemas/OpeningHours'
+            wednesday:
+              $ref: '#/components/schemas/OpeningHours'
+            thursday:
+              $ref: '#/components/schemas/OpeningHours'
+            friday:
+              $ref: '#/components/schemas/OpeningHours'
+            saturday:
+              $ref: '#/components/schemas/OpeningHours'
+            sunday:
+              $ref: '#/components/schemas/OpeningHours'
+
+    OpeningHours:
+      type: object
+      properties:
+        open:
+          type: string
+          format: time
+        close:
+          type: string
+          format: time
+        closed:
+          type: boolean
+
+    Event:
+      type: object
+      properties:
+        _id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        location:
+          type: object
+          properties:
+            type:
+              type: string
+              enum: [Point]
+            coordinates:
+              type: array
+              items:
+                type: number
+        capacity:
+          type: integer
+        ticketsSold:
+          type: integer
+        price:
+          type: number
+        images:
+          type: array
+          items:
+            type: string
+            format: binary
+          description: Event images
+
+    Reservation:
+      type: object
+      properties:
+        _id:
+          type: string
+        userId:
+          type: string
+        spotId:
+          type: string
+        date:
+          type: string
+          format: date
+        time:
+          type: string
+          format: time
+        partySize:
+          type: integer
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled]
+        createdAt:
+          type: string
+          format: date-time
+
+    RateLimitInfo:
+      type: object
+      properties:
+        limit:
+          type: integer
+          description: Rate limit ceiling for the window
+        remaining:
+          type: integer
+          description: Number of requests remaining in window
+        reset:
+          type: integer
+          description: Time window reset in UTC epoch seconds
+
+    CacheInfo:
+      type: object
+      properties:
+        cached:
+          type: boolean
+          description: Whether the response was served from cache
+        ttl:
+          type: integer
+          description: Time to live in seconds for cached response
+
+    UserDevice:
+      type: object
+      properties:
+        _id:
+          type: string
+        user:
+          type: string
+          description: User ID
+        fcmToken:
+          type: string
+          description: Firebase Cloud Messaging token
+        deviceInfo:
+          type: string
+          description: Information about the device
+        lastUsed:
+          type: string
+          format: date-time
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+paths:
+  /api/v1/auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - email
+                - phone
+                - password
+                - dateOfBirth
+                - sex
+              properties:
+                name:
+                  type: string
+                  minimum: 3
+                  maximum: 50
+                email:
+                  type: string
+                  format: email
+                phone:
+                  type: string
+                  format: phone
+                password:
+                  type: string
+                  minimum: 6
+                dateOfBirth:
+                  type: string
+                  format: date
+                sex:
+                  type: string
+                  enum: [Male, Female]
+                avatar:
+                  type: string
+                fcmtoken:
+                  type: string
+      responses:
+        '200':
+          description: User registered successfully
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+                  rateLimit:
+                    $ref: '#/components/schemas/RateLimitInfo'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Login user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                fcmtoken:
+                  type: string
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request password reset OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: OTP sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/verify-forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Verify password reset OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - otp
+              properties:
+                email:
+                  type: string
+                  format: email
+                otp:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+      responses:
+        '200':
+          description: OTP verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+        '400':
+          description: Invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/reset-forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Reset password with OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - otp
+                - newPassword
+              properties:
+                email:
+                  type: string
+                  format: email
+                otp:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+                newPassword:
+                  type: string
+                  minimum: 6
+      responses:
+        '200':
+          description: Password reset successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+        '400':
+          description: Invalid input or OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/change-password:
+    post:
+      tags:
+        - Authentication
+      summary: Change user password
+      description: Change the current user's password by providing the old and new passwords. Requires authentication.
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - oldPassword
+                - newPassword
+              properties:
+                oldPassword:
+                  type: string
+                  description: Current password
+                  minLength: 6
+                  example: "currentPassword123"
+                newPassword:
+                  type: string
+                  description: New password to set
+                  minLength: 6
+                  example: "newPassword123"
+      responses:
+        '200':
+          description: Password changed successfully
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Password changed successfully"
+                  rateLimit:
+                    $ref: '#/components/schemas/RateLimitInfo'
+        '400':
+          description: Invalid input or incorrect old password
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Current password is incorrect"
+                  validationErrors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field:
+                          type: string
+                        message:
+                          type: string
+                    example:
+                      - field: "oldPassword"
+                        message: "Current password is required"
+                      - field: "newPassword"
+                        message: "New password must be at least 6 characters long"
+        '401':
+          description: Unauthorized - Invalid or expired token
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Authentication token is invalid or expired"
+
+  /api/v1/auth/refresh-token:
+    post:
+      tags:
+        - Authentication
+      summary: Refresh access token
+      description: Use FCM token to obtain a new access token when the current one expires
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fcmToken
+              properties:
+                fcmToken:
+                  type: string
+                  description: Firebase Cloud Messaging token
+      responses:
+        '200':
+          description: New access token generated
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  rateLimit:
+                    $ref: '#/components/schemas/RateLimitInfo'
+        '401':
+          description: Invalid or inactive FCM token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: Too many refresh attempts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Too many refresh token attempts, please try again later"
+
+  /api/v1/auth/devices:
+    get:
+      tags:
+        - Authentication
+      summary: Get user's active devices
+      description: Retrieve a list of all active devices for the current user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: List of active devices
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  devices:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/UserDevice'
+                  rateLimit:
+                    $ref: '#/components/schemas/RateLimitInfo'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/logout:
+    post:
+      tags:
+        - Authentication
+      summary: Logout user
+      description: Logout from current device by deactivating FCM token
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fcmToken
+              properties:
+                fcmToken:
+                  type: string
+                  description: Firebase Cloud Messaging token to deactivate
+      responses:
+        '200':
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "User logged out successfully"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/logout-all:
+    post:
+      tags:
+        - Authentication
+      summary: Logout from all devices
+      description: Deactivate all FCM tokens associated with the user
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Logged out from all devices
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Logged out from all devices successfully"
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/request-email-verification:
+    post:
+      tags:
+        - Email Verification
+      summary: Request email verification OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: Verification email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/auth/verify-email:
+    post:
+      tags:
+        - Email Verification
+      summary: Verify email with OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - otp
+              properties:
+                email:
+                  type: string
+                  format: email
+                otp:
+                  type: string
+                  minLength: 6
+                  maxLength: 6
+      responses:
+        '200':
+          description: Email verified successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+        '400':
+          description: Invalid OTP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/spots:
+    get:
+      tags:
+        - Spots
+      summary: Get all spots with pagination and filters
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+        - in: query
+          name: name
+          schema:
+            type: string
+        - in: query
+          name: town
+          schema:
+            type: string
+        - in: query
+          name: type
+          schema:
+            type: string
+        - in: query
+          name: budget
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of spots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  spots:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Spot'
+
+    post:
+      tags:
+        - Spots
+      summary: Create a new spot
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                town:
+                  type: string
+                type:
+                  type: string
+                budget:
+                  type: string
+                location:
+                  type: object
+                  properties:
+                    lat:
+                      type: number
+                    lon:
+                      type: number
+                coverImage:
+                  type: string
+                  format: binary
+                profileImage:
+                  type: string
+                  format: binary
+                menuImages:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Spot created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Spot'
+
+  /api/v1/spots/{id}:
+    get:
+      tags:
+        - Spots
+      summary: Get spot by ID
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Spot details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Spot'
+
+  /api/v1/events:
+    get:
+      tags:
+        - Events
+      summary: Get all events with pagination and filters
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Items per page
+        - in: query
+          name: name
+          schema:
+            type: string
+          description: Filter by event name
+        - in: query
+          name: startDate
+          schema:
+            type: string
+            format: date
+          description: Filter by start date
+        - in: query
+          name: endDate
+          schema:
+            type: string
+            format: date
+          description: Filter by end date
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  totalEvents:
+                    type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Events
+      summary: Create a new event
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - name
+                - description
+                - startDate
+                - endDate
+                - capacity
+                - price
+              properties:
+                name:
+                  type: string
+                  description: Event name
+                description:
+                  type: string
+                  description: Event description
+                startDate:
+                  type: string
+                  format: date-time
+                  description: Event start date and time
+                endDate:
+                  type: string
+                  format: date-time
+                  description: Event end date and time
+                capacity:
+                  type: integer
+                  description: Maximum number of participants
+                price:
+                  type: number
+                  description: Ticket price
+                location:
+                  type: object
+                  properties:
+                    lat:
+                      type: number
+                    lon:
+                      type: number
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Event images
+      responses:
+        '201':
+          description: Event created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/events/{id}:
+    get:
+      tags:
+        - Events
+      summary: Get event by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      responses:
+        '200':
+          description: Event details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Events
+      summary: Update event
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                startDate:
+                  type: string
+                  format: date-time
+                endDate:
+                  type: string
+                  format: date-time
+                capacity:
+                  type: integer
+                price:
+                  type: number
+                location:
+                  type: object
+                  properties:
+                    lat:
+                      type: number
+                    lon:
+                      type: number
+                images:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        '200':
+          description: Event updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Event'
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Events
+      summary: Delete event
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      responses:
+        '200':
+          description: Event deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Event deleted successfully"
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/events/{id}/participants:
+    get:
+      tags:
+        - Events
+      summary: Get event participants
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      responses:
+        '200':
+          description: List of event participants
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  participants:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  totalParticipants:
+                    type: integer
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/events/{id}/participate:
+    post:
+      tags:
+        - Events
+      summary: Join an event
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      responses:
+        '200':
+          description: Successfully joined event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Successfully joined event"
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '400':
+          description: Event is full or user already participating
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      tags:
+        - Events
+      summary: Leave an event
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Event ID
+      responses:
+        '200':
+          description: Successfully left event
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Successfully left event"
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '400':
+          description: User not participating in event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/events/buy-tickets:
+    post:
+      tags:
+        - Events
+      summary: Buy tickets for an event
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - eventId
+                - quantity
+              properties:
+                eventId:
+                  type: string
+                quantity:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Tickets purchased successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                  event:
+                    $ref: '#/components/schemas/Event'
+
+  /api/v1/user/profile:
+    get:
+      tags:
+        - User
+      summary: Get user profile
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/v1/user/modify-info:
+    put:
+      tags:
+        - User
+      summary: Update user information
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                dateOfBirth:
+                  type: string
+                  format: date
+                sex:
+                  type: string
+                  enum: [Male, Female]
+      responses:
+        '200':
+          description: User information updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /api/v1/user/upload-avatar:
+    post:
+      tags:
+        - User
+      summary: Upload user avatar
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Avatar uploaded successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                  avatar:
+                    type: string
+
+  /api/v1/reservations:
+    post:
+      tags:
+        - Reservations
+      summary: Create a new reservation
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - spotId
+                - date
+                - time
+                - partySize
+              properties:
+                spotId:
+                  type: string
+                date:
+                  type: string
+                  format: date
+                time:
+                  type: string
+                  format: time
+                partySize:
+                  type: integer
+                  minimum: 1
+      responses:
+        '200':
+          description: Reservation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation' 
+
+  /stories:
+    get:
+      tags:
+        - Stories
+      summary: Get all stories
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: List of stories
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+            X-Cache:
+              schema:
+                type: boolean
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Story'
+                  rateLimit:
+                    $ref: '#/components/schemas/RateLimitInfo'
+                  cache:
+                    $ref: '#/components/schemas/CacheInfo'
+
+  /health:
+    get:
+      tags:
+        - System
+      summary: Check API health
+      description: Returns the health status of the API and its dependencies
+      responses:
+        '200':
+          description: Health check response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded, unhealthy]
+                  version:
+                    type: string
+                  timestamp:
+                    type: string
+                    format: date-time
+                  services:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        enum: [healthy, unhealthy]
+                      redis:
+                        type: string
+                        enum: [healthy, unhealthy, disabled]
+                      cloudinary:
+                        type: string
+                        enum: [healthy, unhealthy]
+
+  /users/stats:
+    get:
+      tags:
+        - User
+      summary: Get user statistics
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: User statistics
+          headers:
+            X-Cache:
+              schema:
+                type: boolean
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  spotsVisited:
+                    type: integer
+                  eventsAttended:
+                    type: integer
+                  reservationsMade:
+                    type: integer
+                  totalRatings:
+                    type: integer
+                  cache:
+                    $ref: '#/components/schemas/CacheInfo'
+
+  /api/v1/user/favorites:
+    get:
+      tags:
+        - User
+      summary: Get user's favorite spots
+      description: Get a paginated list of user's favorite spots
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+      responses:
+        '200':
+          description: List of favorite spots
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+            X-Cache:
+              schema:
+                type: boolean
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  favorites:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Spot'
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  totalFavorites:
+                    type: integer
+                  cache:
+                    $ref: '#/components/schemas/CacheInfo'
+        '401':
+          description: Unauthorized - Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    post:
+      tags:
+        - User
+      summary: Add spot to favorites
+      description: Add a spot to user's favorites list
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - spotId
+              properties:
+                spotId:
+                  type: string
+                  description: ID of the spot to add to favorites
+      responses:
+        '200':
+          description: Spot added to favorites successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Spot added to favorites"
+                  favorite:
+                    type: object
+                    properties:
+                      userId:
+                        type: string
+                      spotId:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+        '400':
+          description: Invalid input or spot already in favorites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    delete:
+      tags:
+        - User
+      summary: Remove spot from favorites
+      description: Remove a spot from user's favorites list
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - spotId
+              properties:
+                spotId:
+                  type: string
+                  description: ID of the spot to remove from favorites
+      responses:
+        '200':
+          description: Spot removed from favorites successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Spot removed from favorites"
+                  favorite:
+                    type: object
+                    properties:
+                      userId:
+                        type: string
+                      spotId:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+        '400':
+          description: Invalid input or spot not in favorites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+  /api/v1/spots/{id}/ratings:
+    get:
+      tags:
+        - Spots
+      summary: Get spot ratings
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Spot ID
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Items per page
+      responses:
+        '200':
+          description: List of spot ratings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ratings:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        _id:
+                          type: string
+                        userId:
+                          type: string
+                        spotId:
+                          type: string
+                        rating:
+                          type: number
+                        comment:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  averageRating:
+                    type: number
+        '404':
+          description: Spot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    post:
+      tags:
+        - Spots
+      summary: Rate a spot
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Spot ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - rating
+              properties:
+                rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                  description: Rating value between 1 and 5
+                comment:
+                  type: string
+                  description: Optional review comment
+      responses:
+        '200':
+          description: Rating submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                  rating:
+                    type: object
+                    properties:
+                      _id:
+                        type: string
+                      userId:
+                        type: string
+                      spotId:
+                        type: string
+                      rating:
+                        type: number
+                      comment:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+        '400':
+          description: Invalid rating value
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/spots/{id}/menu:
+    get:
+      tags:
+        - Spots
+      summary: Get spot menu
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Spot ID
+      responses:
+        '200':
+          description: Spot menu details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  menuImages:
+                    type: array
+                    items:
+                      type: string
+                  updatedAt:
+                    type: string
+                    format: date-time
+        '404':
+          description: Spot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Spots
+      summary: Update spot menu
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Spot ID
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - menuImages
+              properties:
+                menuImages:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Menu images to upload
+      responses:
+        '200':
+          description: Menu updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Spot'
+        '404':
+          description: Spot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/spots/filtered:
+    post:
+      tags:
+        - Spots
+      summary: Get filtered spots with advanced criteria
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                location:
+                  type: object
+                  properties:
+                    lat:
+                      type: number
+                    lon:
+                      type: number
+                    maxDistance:
+                      type: number
+                      description: Maximum distance in kilometers
+                types:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of spot types to filter by
+                budgets:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of budget ranges to filter by
+                towns:
+                  type: array
+                  items:
+                    type: string
+                  description: Array of towns to filter by
+                rating:
+                  type: number
+                  minimum: 1
+                  maximum: 5
+                  description: Minimum rating threshold
+                page:
+                  type: integer
+                  default: 1
+                limit:
+                  type: integer
+                  default: 10
+      responses:
+        '200':
+          description: List of filtered spots
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  spots:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Spot'
+                  totalPages:
+                    type: integer
+                  currentPage:
+                    type: integer
+                  totalSpots:
+                    type: integer
+        '400':
+          description: Invalid filter criteria
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/spots/{id}/opening-times:
+    get:
+      tags:
+        - Spots
+      summary: Get spot opening times
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Spot ID
+      responses:
+        '200':
+          description: Spot opening times
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  openingTimes:
+                    type: object
+                    properties:
+                      monday:
+                        $ref: '#/components/schemas/OpeningHours'
+                      tuesday:
+                        $ref: '#/components/schemas/OpeningHours'
+                      wednesday:
+                        $ref: '#/components/schemas/OpeningHours'
+                      thursday:
+                        $ref: '#/components/schemas/OpeningHours'
+                      friday:
+                        $ref: '#/components/schemas/OpeningHours'
+                      saturday:
+                        $ref: '#/components/schemas/OpeningHours'
+                      sunday:
+                        $ref: '#/components/schemas/OpeningHours'
+        '404':
+          description: Spot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      tags:
+        - Spots
+      summary: Update spot opening times
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+          description: Spot ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                openingTimes:
+                  type: object
+                  properties:
+                    monday:
+                      $ref: '#/components/schemas/OpeningHours'
+                    tuesday:
+                      $ref: '#/components/schemas/OpeningHours'
+                    wednesday:
+                      $ref: '#/components/schemas/OpeningHours'
+                    thursday:
+                      $ref: '#/components/schemas/OpeningHours'
+                    friday:
+                      $ref: '#/components/schemas/OpeningHours'
+                    saturday:
+                      $ref: '#/components/schemas/OpeningHours'
+                    sunday:
+                      $ref: '#/components/schemas/OpeningHours'
+      responses:
+        '200':
+          description: Opening times updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Spot'
+        '400':
+          description: Invalid opening times format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Spot not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error' 
+
+  /api/v1/user/favorites/events:
+    get:
+      tags:
+        - User
+      summary: Get user's favorite events
+      description: Get a paginated list of user's favorite events
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 10
+          description: Number of items per page
+      responses:
+        '200':
+          description: List of favorite events
+          headers:
+            X-RateLimit-Limit:
+              schema:
+                type: integer
+            X-RateLimit-Remaining:
+              schema:
+                type: integer
+            X-RateLimit-Reset:
+              schema:
+                type: integer
+            X-Cache:
+              schema:
+                type: boolean
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  favorites:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  totalPages:
+                    type: integer
+                    description: Total number of pages available
+                  currentPage:
+                    type: integer
+                    description: Current page number
+                  totalFavorites:
+                    type: integer
+                    description: Total number of favorite events
+                  cache:
+                    $ref: '#/components/schemas/CacheInfo'
+        '401':
+          description: Unauthorized - Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+  /api/v1/user/favorites/events/{eventId}:
+    post:
+      tags:
+        - User
+      summary: Add event to favorites
+      description: Add an event to user's favorites list
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+          description: ID of the event to add to favorites
+      responses:
+        '200':
+          description: Event added to favorites successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Event added to favorites"
+                  favorite:
+                    type: object
+                    properties:
+                      user:
+                        type: string
+                        description: User ID
+                      event:
+                        type: string
+                        description: Event ID
+                      createdAt:
+                        type: string
+                        format: date-time
+                        description: When the event was added to favorites
+        '400':
+          description: Invalid input or event already in favorites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    
+    delete:
+      tags:
+        - User
+      summary: Remove event from favorites
+      description: Remove an event from user's favorites list
+      security:
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: eventId
+          required: true
+          schema:
+            type: string
+          description: ID of the event to remove from favorites
+      responses:
+        '200':
+          description: Event removed from favorites successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    example: "Event removed from favorites"
+                  favorite:
+                    type: object
+                    properties:
+                      user:
+                        type: string
+                        description: User ID
+                      event:
+                        type: string
+                        description: Event ID
+                      createdAt:
+                        type: string
+                        format: date-time
+                        description: When the event was originally added to favorites
+        '400':
+          description: Invalid input or event not in favorites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized - Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Event not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error' 

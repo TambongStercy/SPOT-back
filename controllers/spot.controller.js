@@ -1,6 +1,7 @@
 const spotService = require('../services/spot.services');
 const ratingService = require('../services/rating.services');
 const uploadService = require('../services/upload.services');
+const { attachFavoriteStatus } = require('../services/favorite.services');
 
 // Controller to create a new spot
 exports.createSpot = async (req, res) => {
@@ -61,7 +62,8 @@ exports.updateSpot = async (req, res) => {
 
         // Update the spot
         const updatedSpot = await spotService.updateSpot({ spotId: params.id, updates });
-        res.json(updatedSpot);
+        const spotWithFavorite = await attachFavoriteStatus(updatedSpot, req.user?.id);
+        res.json(spotWithFavorite);
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }
@@ -71,7 +73,8 @@ exports.updateSpot = async (req, res) => {
 exports.getSpots = async (req, res) => {
     try {
         const spots = await spotService.getSpots();
-        res.json(spots);
+        const spotsWithFavorites = await attachFavoriteStatus(spots, req.user?.id);
+        res.json(spotsWithFavorites);
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }
@@ -82,7 +85,9 @@ exports.getSpotById = async (req, res) => {
     try {
         const spot = await spotService.getSpotById(req.params.id);
         if (!spot) return res.status(404).json({ msg: 'Spot not found' });
-        res.json(spot);
+        
+        const spotWithFavorite = await attachFavoriteStatus(spot, req.user?.id);
+        res.json(spotWithFavorite);
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }
@@ -92,8 +97,9 @@ exports.getSpotById = async (req, res) => {
 exports.getFilteredSpots = async (req, res) => {
     try {
         const { page = 1, limit = 10, ...filters } = req.query;  // Extract pagination and filters from query params
-
         const spots = await spotService.getFilteredSpots({ page, limit, filters });
+        const spotsWithFavorites = await attachFavoriteStatus(spots.spots, req.user?.id);
+        spots.spots = spotsWithFavorites;  // Replace spots with spots with favorite status
         res.json(spots);
     } catch (err) {
         res.status(500).json({ msg: err.message });
@@ -110,7 +116,8 @@ exports.rateSpot = async (req, res) => {
             rating,
             review
         });
-        res.json(ratedSpot);
+        const spotWithFavorite = await attachFavoriteStatus(ratedSpot, req.user.id);
+        res.json(spotWithFavorite);
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }
@@ -121,6 +128,42 @@ exports.getSpotRatings = async (req, res) => {
     try {
         const ratings = await ratingService.getRatingsForSpot(req.params.id);
         res.json(ratings);
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller for getting nearby spots with pagination
+exports.getNearbySpots = async (req, res) => {
+    try {
+        const { 
+            latitude, 
+            longitude, 
+            radius = 5000, // Default radius in meters (5km)
+            page = 1, 
+            limit = 10,  
+            ...filters 
+        } = req.query;
+
+        if (!latitude || !longitude) {
+            return res.status(400).json({ 
+                msg: 'Latitude and longitude are required parameters' 
+            });
+        }
+
+        const spots = await spotService.getNearbySpots({
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
+            radius: parseFloat(radius),
+            page: parseInt(page),
+            limit: parseInt(limit),
+            filters
+        });
+
+        const spotsWithFavorites = await attachFavoriteStatus(spots.spots, req.user?.id);
+        spots.spots = spotsWithFavorites;
+        
+        res.json(spots);
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }

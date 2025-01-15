@@ -1,25 +1,53 @@
 const mongoose = require('mongoose');
-const { Schema } = mongoose;
 
-const UserSchema = new Schema({
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
-    dateOfBirth: { type: Date, required: true },  // Added date of birth
-    sex: { type: String, required: true, enum: ['Male', 'Female'] },  // Added sex with Male or Female options
-    token: { type: String },  // JWT token for authentication
-    avatar: { type: String, trim: true },  // URL or path to the user's avatar
-    location: {
-        type: { type: String, default: 'Point' },
-        coordinates: { type: [Number], required: false }
+const userSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+        minlength: 3,
+        maxlength: 50,
+        trim: true
     },
-    points: { type: Number, default: 0 },  // SPOT POINTS field
-    verifiedEmail: { type: Boolean, default: false },  // Field to track if email is verified
-    // List of favorite spots (references to the Spot model)
-    favorites: [{ type: Schema.Types.ObjectId, ref: 'Spot' }]
+    phone: {
+        type: String,
+        required: true,
+        unique: true,
+        trim: true
+    },
+    phoneVerified: {
+        type: Boolean,
+        default: false
+    },
+    email: {
+        type: String,
+        sparse: true,
+        unique: true,
+        lowercase: true,
+        index: { collation: { locale: 'en', strength: 2 } },
+        trim: true
+    },
+    verifiedEmail: {
+        type: Boolean,
+        default: false
+    },
+    password: {
+        type: String,
+        required: true
+    },
+    dateOfBirth: {
+        type: Date,
+        required: true
+    },
+    sex: {
+        type: String,
+        enum: ['Male', 'Female'],
+        required: true
+    },
+    avatar: String,
+    fcmtoken: String,
+    token: String
 }, {
     timestamps: true
 });
 
-
-module.exports = mongoose.model('User', UserSchema);
+module.exports = mongoose.model('User', userSchema);
