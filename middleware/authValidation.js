@@ -9,9 +9,33 @@ exports.validateRegister = (req, res, next) => {
         email: Joi.string().email().optional(),
         password: Joi.string().min(6).required(),
         dateOfBirth: Joi.date().iso().required(),
-        sex: Joi.string().valid('Male', 'Female').required(),
+        sex: Joi.string().valid('Male', 'Female', 'Other').required(),
+        refferalCode: Joi.string().optional(),
+        username: Joi.string().min(3).max(50).optional()
+            .custom((value, helpers) => {
+                if (value) {
+                    // Remove '@' if it exists to check the actual username length
+                    const usernameWithoutAt = value.startsWith('@') ? value.substring(1) : value;
+
+                    // Check if username (without @) is too short
+                    if (usernameWithoutAt.length < 2) {
+                        return helpers.error('string.usernameMinLength');
+                    }
+
+                    // Check if username contains only valid characters
+                    if (!/^[a-zA-Z0-9_]+$/.test(usernameWithoutAt)) {
+                        return helpers.error('string.usernameInvalid');
+                    }
+                }
+                return value;
+            })
+            .messages({
+                'string.usernameMinLength': 'Username must be at least 3 characters long (including @)',
+                'string.usernameInvalid': 'Username can only contain letters, numbers, and underscores'
+            }),
         fcmToken: Joi.string().required(),
-        deviceInfo: Joi.string().required()
+        deviceInfo: Joi.string().required(),
+        location: Joi.string().optional(),
     });
 
     const { error } = schema.validate(req.body);
@@ -28,7 +52,8 @@ exports.validateLogin = (req, res, next) => {
         phone: Joi.string().pattern(/^\+[1-9]\d{1,14}$/),
         password: Joi.string().required(),
         fcmToken: Joi.string().required(),
-        deviceInfo: Joi.string().required()
+        deviceInfo: Joi.string().required(),
+        location: Joi.string().optional(),
     }).xor('email', 'phone'); // Require either email or phone, but not both
 
     const { error } = schema.validate(req.body);
@@ -44,7 +69,8 @@ exports.validateLoginWithPhone = (req, res, next) => {
         phone: Joi.string().pattern(/^\+[1-9]\d{1,14}$/).required(),
         password: Joi.string().min(6).required(),
         fcmToken: Joi.string().required(),
-        deviceInfo: Joi.string().required()
+        deviceInfo: Joi.string().required(),
+        location: Joi.string().optional(),
     });
 
     const { error } = schema.validate(req.body);
@@ -59,7 +85,9 @@ exports.validateForgotPassword = (req, res, next) => {
     const schema = Joi.object({
         email: Joi.string().email().required(),
         otp: Joi.string().length(6).optional(),
-        newPassword: Joi.string().min(6).optional()
+        newPassword: Joi.string().min(6).optional(),
+        deviceInfo: Joi.string().required(),
+        location: Joi.object().optional()
     });
 
     const { error } = schema.validate(req.body);
@@ -72,8 +100,11 @@ exports.validateForgotPassword = (req, res, next) => {
 exports.validateEmailVerification = (req, res, next) => {
     const schema = Joi.object({
         email: Joi.string().email().required(),
-        otp: Joi.string().length(6).optional()
+        otp: Joi.string().length(6).optional(),
+        deviceInfo: Joi.string().required(),
+        location: Joi.object().optional()
     });
+
 
     const { error } = schema.validate(req.body);
     if (error) {
@@ -85,7 +116,9 @@ exports.validateEmailVerification = (req, res, next) => {
 exports.validatePhoneVerification = (req, res, next) => {
     const schema = Joi.object({
         phone: Joi.string().pattern(/^\+[1-9]\d{1,14}$/).required(),
-        otp: Joi.string().length(6).optional()
+        otp: Joi.string().length(6).optional(),
+        deviceInfo: Joi.string().required(),
+        location: Joi.object().optional()
     });
 
     const { error } = schema.validate(req.body);
@@ -97,7 +130,7 @@ exports.validatePhoneVerification = (req, res, next) => {
 
 // Validate change password request
 exports.validateChangePassword = (req, res, next) => {
-    const { oldPassword, newPassword } = req.body;
+    const { oldPassword, newPassword, deviceInfo, location } = req.body;
     const errors = new ValidationError('Validation Error');
 
     if (!oldPassword) {
@@ -108,6 +141,10 @@ exports.validateChangePassword = (req, res, next) => {
         errors.addError('newPassword', 'New password is required');
     } else if (newPassword.length < 6) {
         errors.addError('newPassword', 'New password must be at least 6 characters long');
+    }
+
+    if (!deviceInfo) {
+        errors.addError('deviceInfo', 'Device info is required');
     }
 
     if (errors.validationErrors.length > 0) {

@@ -1,6 +1,7 @@
 const userService = require('../services/user.services');
 const otpService = require('../services/otp.services');
 const emailService = require('../services/email.services');
+const referralService = require('../services/referral.service');
 
 // Controller to handle general OTP requests with a reason field
 exports.requestOtp = async (req, res) => {
@@ -124,20 +125,20 @@ exports.modifyEmail = async (req, res) => {
 exports.updateLocation = async (req, res) => {
     try {
         const { lon, lat, fcmToken } = req.body;
-        
+
         if (!fcmToken) {
             return res.status(400).json({ msg: 'FCM Token is required' });
         }
 
-        const result = await userService.updateUserLocation({ 
-            userId: req.user.id, 
+        const result = await userService.updateUserLocation({
+            userId: req.user.id,
             fcmToken,
-            lon, 
+            lon,
             lat
         });
 
-        res.json({ 
-            msg: 'Location updated successfully', 
+        res.json({
+            msg: 'Location updated successfully',
             location: result.locationHistory,
             userLocation: result.user.location
         });
@@ -157,7 +158,8 @@ exports.updateLocation = async (req, res) => {
 exports.getLocationHistory = async (req, res) => {
     try {
         const { startDate, endDate, limit, fcmToken } = req.query;
-        
+
+
         const locationHistory = await userService.getUserLocationHistory(
             req.user.id,
             {
@@ -167,8 +169,54 @@ exports.getLocationHistory = async (req, res) => {
                 fcmToken
             }
         );
-        
+
         res.json({ locationHistory });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller for getting user's session history
+exports.getSessionHistory = async (req, res) => {
+    try {
+        const { startDate, endDate, limit, eventType } = req.query;
+
+        const sessionLocationService = require('../services/sessionLocation.service');
+        const sessionHistory = await sessionLocationService.getUserSessionHistory(
+            req.user.id,
+            {
+                startDate,
+                endDate,
+                limit: limit ? parseInt(limit) : undefined,
+                eventType
+            }
+        );
+
+        res.json({ sessionHistory });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller for getting device session history
+exports.getDeviceSessionHistory = async (req, res) => {
+    try {
+        const { deviceId } = req.params;
+        const { startDate, endDate, limit, eventType } = req.query;
+
+        const sessionLocationService = require('../services/sessionLocation.service');
+        // Verify that the device belongs to the user
+        const sessionHistory = await sessionLocationService.getDeviceSessionHistory(
+            deviceId,
+            {
+                startDate,
+                endDate,
+                limit: limit ? parseInt(limit) : undefined,
+                eventType
+            }
+        );
+
+        res.json({ sessionHistory });
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }
@@ -258,20 +306,20 @@ exports.deleteUser = async (req, res) => {
 exports.updateCurrentLocation = async (req, res) => {
     try {
         const { lon, lat, fcmToken } = req.body;
-        
+
         if (!fcmToken) {
             return res.status(400).json({ msg: 'FCM Token is required' });
         }
 
-        const result = await userService.updateUserCurrentLocation({ 
-            userId: req.user.id, 
+        const result = await userService.updateUserCurrentLocation({
+            userId: req.user.id,
             fcmToken,
-            lon, 
+            lon,
             lat
         });
 
-        res.json({ 
-            msg: 'Location updated successfully', 
+        res.json({
+            msg: 'Location updated successfully',
             currentLocation: result.currentLocation,
             userLocation: result.user.location
         });
@@ -284,5 +332,104 @@ exports.updateCurrentLocation = async (req, res) => {
             return res.status(403).json({ msg: err.message });
         }
         res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller to get latest locations for all user devices
+exports.getUserDevicesLatestLocations = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        const latestLocations = await userService.getUserDevicesLatestLocations(userId);
+
+        res.json({
+            msg: 'User devices latest locations retrieved successfully',
+            devices: latestLocations
+        });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller to logout a specific device
+exports.logoutDevice = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { fcmToken } = req.body;
+
+        if (!fcmToken) {
+            return res.status(400).json({ msg: 'FCM Token is required' });
+        }
+
+        await userService.logoutDevice(userId, fcmToken);
+
+        res.json({ msg: 'Device logged out successfully' });
+    } catch (err) {
+        // Handle specific error cases
+        if (err.message.includes('Device not found')) {
+            return res.status(404).json({ msg: err.message });
+        }
+        if (err.message.includes('not registered to your account')) {
+            return res.status(403).json({ msg: err.message });
+        }
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Controller for getting user's recently opened spots and events
+exports.getRecentlyOpenedItems = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { itemType, page, limit } = req.query;
+
+        const userActivityService = require('../services/userActivity.services');
+        const recentlyOpenedItems = await userActivityService.getUserRecentlyOpenedItems(
+            userId,
+            {
+                itemType,
+                page: page ? parseInt(page) : undefined,
+                limit: limit ? parseInt(limit) : undefined
+            }
+        );
+
+        res.status(200).json({
+            success: true,
+            ...recentlyOpenedItems
+        });
+    } catch (err) {
+        console.error('Error fetching recently opened items:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch recently opened items',
+            error: err.message
+        });
+    }
+};
+
+// Controller to validate a referral code
+exports.validateReferralCode = async (req, res) => {
+    try {
+        const { code } = req.params;
+
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: 'Referral code is required'
+            });
+        }
+
+        const result = await referralService.validateReferralCode(code);
+
+        res.status(200).json({
+            success: true,
+            ...result
+        });
+    } catch (err) {
+        console.error('Error validating referral code:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to validate referral code',
+            error: err.message
+        });
     }
 };

@@ -1,0 +1,292 @@
+const admin = require('firebase-admin');
+const UserDevice = require('../models/UserDevice');
+const User = require('../models/User');
+
+// Initialize Firebase Admin SDK if not already initialized
+if (!admin.apps.length) {
+    const serviceAccount = require('../config/firebase-service-account.json');
+    admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount)
+    });
+}
+
+/**
+ * Send a notification to a specific user
+ * @param {String} userId - User ID
+ * @param {Object} notification - Notification data
+ * @param {String} notification.title - Notification title
+ * @param {String} notification.body - Notification body
+ * @param {Object} data - Additional data to send with the notification
+ * @returns {Promise<Object>} - Notification result
+ */
+exports.sendUserNotification = async (userId, notification, data = {}) => {
+    try {
+        // Get user's devices
+        const userDevices = await UserDevice.find({ user: userId, fcmToken: { $exists: true, $ne: null } });
+
+        if (!userDevices || userDevices.length === 0) {
+            console.log(`No devices found for user ${userId}`);
+            return { success: false, message: 'No devices found for user' };
+        }
+
+        // Extract FCM tokens
+        const tokens = userDevices.map(device => device.fcmToken).filter(Boolean);
+
+        if (tokens.length === 0) {
+            console.log(`No valid FCM tokens found for user ${userId}`);
+            return { success: false, message: 'No valid FCM tokens found' };
+        }
+
+        // Prepare message
+        const message = {
+            notification: {
+                title: notification.title,
+                body: notification.body
+            },
+            data: {
+                ...data,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            },
+            tokens: tokens
+        };
+
+        // Send message
+        const response = await admin.messaging().sendMulticast(message);
+
+        console.log(`Successfully sent notifications to ${response.successCount} devices`);
+
+        return {
+            success: true,
+            successCount: response.successCount,
+            failureCount: response.failureCount,
+            responses: response.responses
+        };
+    } catch (error) {
+        console.error('Error sending notification:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Send chat notification to a user
+ * @param {String} userId - User ID to send notification to
+ * @param {Object} chatData - Chat data including message content
+ * @returns {Promise<Object>} - Notification result
+ */
+exports.sendChatNotification = async (userId, chatData) => {
+    try {
+        // Get user details for personalization
+        const user = await User.findById(userId);
+        if (!user) {
+            console.log(`User ${userId} not found for chat notification`);
+            return { success: false, message: 'User not found' };
+        }
+
+        // Check user notification preferences if implemented
+        // This would typically check if the user has enabled chat notifications
+        // const userPrefs = await getUserNotificationPreferences(userId);
+        // if (!userPrefs.general || !userPrefs.chat) {
+        //     return { success: false, message: 'User has disabled chat notifications' };
+        // }
+
+        // Get sender details
+        const sender = await User.findById(chatData.senderId);
+        const senderName = sender ? (sender.fullName || sender.username || 'Support Team') : 'Support Team';
+
+        // Prepare notification content
+        const notification = {
+            title: `New message from ${senderName}`,
+            body: chatData.content.length > 100
+                ? chatData.content.substring(0, 97) + '...'
+                : chatData.content
+        };
+
+        // Prepare data payload for deep linking and additional info
+        const data = {
+            category: 'chat',
+            chatId: chatData.chatId,
+            messageId: chatData.messageId,
+            senderId: chatData.senderId,
+            senderName: senderName,
+            message: notification.body,
+            timestamp: new Date().toISOString(),
+            deepLink: 'true',
+            notificationId: Date.now().toString(36) + Math.random().toString(36).substr(2)
+        };
+
+        // Send the notification
+        return await exports.sendUserNotification(userId, notification, data);
+    } catch (error) {
+        console.error('Error sending chat notification:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Send notification to all admin users
+ * @param {Object} notification - Notification object with title and body
+ * @param {Object} data - Additional data for the notification
+ * @returns {Promise<Object>} - Notification result
+ */
+exports.sendAdminNotification = async (notification, data = {}) => {
+    try {
+        // Find all admin users
+        const adminUsers = await User.find({ role: 'admin' });
+
+        if (!adminUsers || adminUsers.length === 0) {
+            console.log('No admin users found for notification');
+            return { success: false, message: 'No admin users found' };
+        }
+
+        // Get all admin devices
+        const adminIds = adminUsers.map(admin => admin._id);
+        const adminDevices = await UserDevice.find({
+            user: { $in: adminIds },
+            fcmToken: { $exists: true, $ne: null }
+        });
+
+        if (!adminDevices || adminDevices.length === 0) {
+            console.log('No admin devices found for notification');
+            return { success: false, message: 'No admin devices found' };
+        }
+
+        // Extract FCM tokens
+        const tokens = adminDevices.map(device => device.fcmToken).filter(Boolean);
+
+        if (tokens.length === 0) {
+            console.log('No valid FCM tokens found for admin users');
+            return { success: false, message: 'No valid FCM tokens found' };
+        }
+
+        // Add category if not provided
+        if (!data.category) {
+            data.category = 'admin_alert';
+        }
+
+        // Add notification ID for analytics
+        data.notificationId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+        // Prepare message
+        const message = {
+            notification: {
+                title: notification.title,
+                body: notification.body
+            },
+            data: {
+                ...data,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            },
+            tokens: tokens,
+            android: {
+                priority: 'high',
+                notification: {
+                    clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+                    channelId: 'admin_notifications'
+                }
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        'mutable-content': 1,
+                        'content-available': 1
+                    }
+                }
+            }
+        };
+
+        // Send message
+        const response = await admin.messaging().sendMulticast(message);
+
+        console.log(`Successfully sent admin notifications to ${response.successCount} devices`);
+
+        // Store notification analytics if needed
+        // await storeNotificationForAnalytics(data.notificationId, 'admin', notification.title, notification.body, data.category);
+
+        return {
+            success: true,
+            successCount: response.successCount,
+            failureCount: response.failureCount,
+            responses: response.responses
+        };
+    } catch (error) {
+        console.error('Error sending admin notification:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Send new chat notification to admins
+ * @param {Object} chatData - Chat data
+ * @returns {Promise<Object>} - Notification result
+ */
+exports.sendNewChatNotification = async (chatData) => {
+    try {
+        // Get user details
+        const user = await User.findById(chatData.userId);
+        const userName = user ? (user.fullName || user.username || 'A user') : 'A user';
+
+        // Prepare notification
+        const notification = {
+            title: 'New Support Request',
+            body: `${userName} has opened a new support chat: ${chatData.subject}`
+        };
+
+        // Prepare data for deep linking
+        const data = {
+            category: 'chat',
+            chatId: chatData.chatId,
+            userId: chatData.userId,
+            userName: userName,
+            subject: chatData.subject,
+            timestamp: new Date().toISOString(),
+            deepLink: 'true',
+            type: 'new_chat'
+        };
+
+        // Send to all admins
+        return await exports.sendAdminNotification(notification, data);
+    } catch (error) {
+        console.error('Error sending new chat notification to admins:', error);
+        return { success: false, error: error.message };
+    }
+};
+
+/**
+ * Send chat status update notification
+ * @param {String} userId - User ID to notify
+ * @param {Object} chatData - Chat data
+ * @returns {Promise<Object>} - Notification result
+ */
+exports.sendChatStatusNotification = async (userId, chatData) => {
+    try {
+        // Status-specific messages
+        const statusMessages = {
+            'open': 'Your support chat has been reopened',
+            'closed': 'Your support chat has been closed',
+            'pending': 'Your support chat is pending review'
+        };
+
+        // Prepare notification
+        const notification = {
+            title: 'Support Chat Update',
+            body: statusMessages[chatData.status] || `Your support chat status has been updated to ${chatData.status}`
+        };
+
+        // Prepare data
+        const data = {
+            category: 'chat',
+            chatId: chatData.chatId,
+            status: chatData.status,
+            subject: chatData.subject,
+            timestamp: new Date().toISOString(),
+            deepLink: 'true',
+            type: 'status_update'
+        };
+
+        // Send notification
+        return await exports.sendUserNotification(userId, notification, data);
+    } catch (error) {
+        console.error('Error sending chat status notification:', error);
+        return { success: false, error: error.message };
+    }
+}; 

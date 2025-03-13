@@ -1,11 +1,36 @@
 const Event = require('../models/Event');
+const UserActivity = require('../models/UserActivity');
+const { paginate } = require('../helpers/paginate');
+const { trackSearch, trackOpening, getRecommendations, getTrendingItems, getUserPreferences } = require('./userActivity.services');
+const { getRatingStats } = require('./rating.services');
+const { queryFromFilter } = require('../helpers/queryfrom');
 
-// Create a new event
+// Helper function to attach rating information to events
+const attachRatingToEvents = async (events) => {
+    if (Array.isArray(events)) {
+        const eventsWithRating = await Promise.all(events.map(async (event) => {
+            const eventObj = event.toObject ? event.toObject() : event;
+            const stats = await getRatingStats(event._id, 'event');
+            eventObj.rating = stats.averageRating;
+            eventObj.numberOfRatings = stats.numberOfRatings;
+            return eventObj;
+        }));
+        return eventsWithRating;
+    } else if (events) {
+        const eventObj = events.toObject ? events.toObject() : events;
+        const stats = await getRatingStats(events._id, 'event');
+        eventObj.rating = stats.averageRating;
+        eventObj.numberOfRatings = stats.numberOfRatings;
+        return eventObj;
+    }
+    return null;
+};
+
 exports.createEvent = async (eventData) => {
     try {
         const newEvent = new Event(eventData);
         await newEvent.save();
-        return newEvent;
+        return attachRatingToEvents(newEvent);
     } catch (error) {
         error.statusCode = 400;
         throw error;
@@ -13,15 +38,21 @@ exports.createEvent = async (eventData) => {
 };
 
 // Get an event by ID
-exports.getEventById = async (eventId) => {
+exports.getEventById = async (eventId, userId = null) => {
     try {
-        const event = await Event.findById(eventId);
+        const event = await Event.findById(eventId).lean();
         if (!event) {
             const error = new Error('Event not found');
             error.statusCode = 404;
             throw error;
         }
-        return event;
+
+        if (userId) {
+            // Track opening activity
+            await trackOpening(userId, eventId, 'Event');
+        }
+
+        return attachRatingToEvents(event);
     } catch (error) {
         if (!error.statusCode) error.statusCode = 500;
         throw error;
@@ -31,19 +62,20 @@ exports.getEventById = async (eventId) => {
 // Update an event by ID
 exports.updateEvent = async (eventId, updates) => {
     try {
-        const updatedEvent = await Event.findByIdAndUpdate(
-            eventId,
-            updates,
-            { new: true, runValidators: true }
-        );
-        if (!updatedEvent) {
+        const event = await Event.findByIdAndUpdate(eventId, updates, {
+            new: true,
+            runValidators: true
+        });
+
+        if (!event) {
             const error = new Error('Event not found');
             error.statusCode = 404;
             throw error;
         }
-        return updatedEvent;
+
+        return attachRatingToEvents(event);
     } catch (error) {
-        if (!error.statusCode) error.statusCode = 400;
+        if (!error.statusCode) error.statusCode = 500;
         throw error;
     }
 };
@@ -87,251 +119,290 @@ exports.buyTickets = async (userId, eventId, quantity) => {
     }
 };
 
-// Service to get active events with pagination and filters
-exports.getActiveEvents = async ({ page = 1, limit = 10, filters = {} }) => {
+// Get active events with pagination and filters
+exports.getActiveEvents = async (filters = {}, pagination = {}) => {
     try {
-        // Convert page and limit to numbers
-        page = Number(page);
-        limit = Number(limit);
+        const { page = 1, limit = 10 } = pagination;
 
-        // Validate pagination parameters
-        if (isNaN(page) || page < 1) {
-            const error = new Error('Invalid page number');
-            error.statusCode = 400;
-            throw error;
-        }
-        if (isNaN(limit) || limit < 1) {
-            const error = new Error('Invalid limit number');
-            error.statusCode = 400;
-            throw error;
-        }
-
-        // Create a query for events that haven't ended yet
-        const currentDate = new Date();
-        const query = { 
-            endDate: { $gte: currentDate },
-            launchDate: { $lte: currentDate }
+        // Base query for active events
+        const query = {
+            launchDate: { $gte: new Date() },
+            ...queryFromFilter(filters)
         };
 
-        // Apply filters
-        if (filters.name) {
-            query.name = { $regex: filters.name, $options: 'i' };
-        }
+        // Get total count
+        const totalEvents = await Event.countDocuments(query);
 
-        if (filters.venue) {
-            query.venue = { $regex: filters.venue, $options: 'i' };
-        }
-
-        if (filters.categories) {
-            query.categories = Array.isArray(filters.categories)
-                ? { $in: filters.categories }
-                : filters.categories;
-        }
-        
-        if (filters.location) {
-            try {
-                const locationCoords = Array.isArray(filters.location) 
-                    ? filters.location 
-                    : JSON.parse(filters.location);
-
-                if (!Array.isArray(locationCoords) || locationCoords.length !== 2 || 
-                    !locationCoords.every(coord => !isNaN(parseFloat(coord)))) {
-                    const error = new Error('Invalid location format. Expected [longitude, latitude]');
-                    error.statusCode = 400;
-                    throw error;
-                }
-
-                query['location.coordinates'] = {
-                    $near: {
-                        $geometry: {
-                            type: 'Point',
-                            coordinates: locationCoords.map(coord => parseFloat(coord))
-                        },
-                        $maxDistance: parseFloat(filters.radius) || 10000 // Default 10km radius
-                    }
-                };
-            } catch (err) {
-                const error = new Error('Invalid location data: ' + err.message);
-                error.statusCode = 400;
-                throw error;
-            }
-        }
-
-        // First check if we have any events at all
-        const total = await Event.countDocuments(query);
-        
-        if (total === 0) {
-            return {
-                totalPages: 0,
-                currentPage: page,
-                totalEvents: 0,
-                events: []
-            };
-        }
-
+        // Get paginated events
         const events = await Event.find(query)
-            .sort({ launchDate: 1 })
-            .limit(limit)
+            .sort({ date: 1 })
             .skip((page - 1) * limit)
-            .lean()
-            .exec();
+            .limit(parseInt(limit))
+            .lean();
+
+        // Attach ratings to events
+        const eventsWithRatings = await attachRatingToEvents(events);
 
         return {
-            totalPages: Math.ceil(total / limit),
-            currentPage: page,
-            totalEvents: total,
-            events
+            events: eventsWithRatings,
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(totalEvents / limit),
+            totalEvents: totalEvents,
+            hasMore: (page - 1) * limit + events.length < totalEvents
         };
     } catch (error) {
-        if (!error.statusCode) {
-            error.statusCode = 500;
-            error.message = `Database error: ${error.message}`;
-        }
-        throw error;
-    }
-};
-
-// Service to get ended events with pagination and filters
-exports.getEndedEvents = async ({ page = 1, limit = 10, filters = {} }) => {
-    try {
-        const query = { endDate: { $lt: new Date() } };
-
-        // Apply filters
-        if (filters.name) {
-            query.name = { $regex: filters.name, $options: 'i' };
-        }
-
-        if (filters.venue) {
-            query.venue = { $regex: filters.venue, $options: 'i' };
-        }
-
-        if (filters.categories) {
-            query.categories = Array.isArray(filters.categories)
-                ? { $in: filters.categories }
-                : filters.categories;
-        }
-
-        if (filters.location) {
-            try {
-                const locationCoords = Array.isArray(filters.location) 
-                    ? filters.location 
-                    : JSON.parse(filters.location);
-
-                query['location.coordinates'] = {
-                    $near: {
-                        $geometry: {
-                            type: 'Point',
-                            coordinates: locationCoords.map(coord => parseFloat(coord))
-                        },
-                        $maxDistance: parseFloat(filters.radius) || 10000
-                    }
-                };
-            } catch (err) {
-                const error = new Error('Invalid location data: ' + err.message);
-                error.statusCode = 400;
-                throw error;
-            }
-        }
-
-        const total = await Event.countDocuments(query);
-        
-        const events = await Event.find(query)
-            .sort({ endDate: -1 })
-            .limit(limit)
-            .skip((page - 1) * limit)
-            .lean()
-            .exec();
-
-        return {
-            totalPages: Math.ceil(total / limit),
-            currentPage: page,
-            totalEvents: total,
-            events
-        };
-    } catch (error) {
+        console.error('Error getting active events:', error);
         if (!error.statusCode) error.statusCode = 500;
         throw error;
     }
 };
 
-// Service to get filtered events
-exports.getFilteredEvents = async ({ page = 1, limit = 10, filters = {} }) => {
+// Get ended events with pagination and filters
+exports.getEndedEvents = async (filters = {}, pagination = {}) => {
     try {
+        const { page = 1, limit = 10 } = pagination;
+
+        // Base query for ended events
+        const query = {
+            endDate: { $lt: new Date() },
+            ...queryFromFilter(filters)
+        };
+
+        // Get total count
+        const totalEvents = await Event.countDocuments(query);
+
+        // Get paginated events
+        const events = await Event.find(query)
+            .sort({ date: -1 })
+            .skip((page - 1) * limit)
+            .limit(parseInt(limit))
+            .lean();
+
+        // Attach ratings to events
+        const eventsWithRatings = await attachRatingToEvents(events);
+
+        return {
+            events: eventsWithRatings,
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(totalEvents / limit),
+            totalEvents: totalEvents,
+            hasMore: (page - 1) * limit + events.length < totalEvents
+        };
+    } catch (error) {
+        console.error('Error getting ended events:', error);
+        if (!error.statusCode) error.statusCode = 500;
+        throw error;
+    }
+};
+
+// Get filtered events
+exports.getFilteredEvents = async ({ page = 1, limit = 10, filters = {}, userId = null }) => {
+    try {
+        // Build query from filters
         const query = {};
 
-        // Add text search across multiple fields
         if (filters.search) {
             query.$or = [
-                { name: { $regex: filters.search, $options: 'i' } },
-                { venue: { $regex: filters.search, $options: 'i' } },
-                { locationDescription: { $regex: filters.search, $options: 'i' } }
+                { title: { $regex: filters.search, $options: 'i' } },
+                { description: { $regex: filters.search, $options: 'i' } },
+                { location: { $regex: filters.search, $options: 'i' } }
             ];
-        } else {
-            // Apply individual field filters if no general search
-            if (filters.name) {
-                query.name = { $regex: filters.name, $options: 'i' };
-            }
-            if (filters.venue) {
-                query.venue = { $regex: filters.venue, $options: 'i' };
+
+            // Track search if userId is provided
+            if (userId) {
+                await trackSearch(userId, 'Event', filters.search);
             }
         }
 
-        if (filters.categories) {
-            query.categories = Array.isArray(filters.categories)
-                ? { $in: filters.categories }
-                : filters.categories;
+        if (filters.category) {
+            query.category = filters.category;
+        }
+
+        if (filters.date) {
+            query.launchDate = { $gte: new Date(filters.date) };
         }
 
         if (filters.location) {
-            try {
-                const locationCoords = Array.isArray(filters.location) 
-                    ? filters.location 
-                    : JSON.parse(filters.location);
-
-                query['location.coordinates'] = {
-                    $near: {
-                        $geometry: {
-                            type: 'Point',
-                            coordinates: locationCoords.map(coord => parseFloat(coord))
-                        },
-                        $maxDistance: parseFloat(filters.radius) || 10000
-                    }
-                };
-            } catch (err) {
-                const error = new Error('Invalid location data: ' + err.message);
-                error.statusCode = 400;
-                throw error;
-            }
+            query.location = { $regex: filters.location, $options: 'i' };
         }
 
-        if (filters.startDate) {
-            query.launchDate = { $gte: new Date(filters.startDate) };
+        if (filters.price) {
+            query.ticketPrice = { $lte: parseFloat(filters.price) };
         }
 
-        if (filters.endDate) {
-            query.endDate = { $lte: new Date(filters.endDate) };
-        }
+        // Get total count
+        const totalEvents = await Event.countDocuments(query);
 
-        const total = await Event.countDocuments(query);
-
+        // Get paginated events
         const events = await Event.find(query)
             .sort({ launchDate: 1 })
-            .limit(limit)
             .skip((page - 1) * limit)
-            .lean()
-            .exec();
+            .limit(parseInt(limit))
+            .lean();
+
+        // Attach ratings to events
+        const eventsWithRatings = await attachRatingToEvents(events);
 
         return {
-            totalPages: Math.ceil(total / limit),
-            currentPage: page,
-            totalEvents: total,
-            events
+            events: eventsWithRatings,
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(totalEvents / limit),
+            totalEvents: totalEvents,
+            hasMore: (page - 1) * limit + events.length < totalEvents
         };
     } catch (error) {
+        console.error('Error getting filtered events:', error);
         if (!error.statusCode) error.statusCode = 500;
         throw error;
     }
 };
+
+// Fetch nearby spots or events as fallback
+exports.getNearbyItems = async (userLocation, maxDistance = 5000, page = 1, limit = 10) => {
+
+    // Geospatial query for nearby items
+    const query = Event.find({
+        location: {
+            $near: {
+                $geometry: { type: 'Point', coordinates: userLocation },
+                $maxDistance: maxDistance
+            }
+        }
+    });
+
+    return await paginate(query, page, limit);
+}
+
+// Get recommended events for a user
+exports.getRecommendedEvents = async ({ userId, page = 1, limit = 10, filters = {} }) => {
+    try {
+        // Get recommendations based on user activity
+        let recommendations = await getRecommendations(userId, 'Event', limit * 3);
+
+        // If not enough recommendations, try preference-based approach
+        if (recommendations.length < limit) {
+            const preferences = await getUserPreferences(userId, 'Event');
+
+            // Build query based on user preferences
+            const query = {};
+
+            if (preferences.categories && preferences.categories.length > 0) {
+                query.category = { $in: preferences.categories };
+            }
+
+            // Find events matching preferences
+            const preferenceBasedEvents = await Event.find(query)
+                .limit(limit * 2)
+                .lean();
+
+            // Combine recommendation sets and remove duplicates
+            const allRecommendations = [...recommendations];
+
+            preferenceBasedEvents.forEach(event => {
+                if (!allRecommendations.some(rec => rec._id.toString() === event._id.toString())) {
+                    allRecommendations.push(event);
+                }
+            });
+
+            recommendations = allRecommendations;
+        }
+
+        // Apply additional filters if provided
+        let filteredRecommendations = [...recommendations];
+
+        if (filters.category) {
+            filteredRecommendations = filteredRecommendations.filter(
+                event => event.category === filters.category
+            );
+        }
+
+        if (filters.location) {
+            filteredRecommendations = filteredRecommendations.filter(
+                event => event.location && event.location.includes(filters.location)
+            );
+        }
+
+        // Get total count for pagination
+        const totalEvents = filteredRecommendations.length;
+
+        // Apply pagination
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedRecommendations = filteredRecommendations.slice(startIndex, endIndex);
+
+        // Attach ratings to events
+        const eventsWithRatings = await attachRatingToEvents(paginatedRecommendations);
+
+        return {
+            events: eventsWithRatings,
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(totalEvents / limit),
+            totalEvents: totalEvents,
+            hasMore: (page - 1) * limit + paginatedRecommendations.length < totalEvents
+        };
+    } catch (error) {
+        console.error('Error getting recommended events:', error);
+        if (!error.statusCode) error.statusCode = 500;
+        throw error;
+    }
+};
+
+// Get trending events
+exports.getTrendingEvents = async ({ page = 1, limit = 10, days = 30, filters = {} }) => {
+    try {
+        // Get trending items based on user activity
+        const trendingItems = await getTrendingItems('Event', days, limit * 3);
+
+        // Apply filters if provided
+        let filteredTrending = [...trendingItems];
+
+        if (filters.category) {
+            filteredTrending = filteredTrending.filter(
+                trending => trending.item && trending.item.category === filters.category
+            );
+        }
+
+        if (filters.location) {
+            filteredTrending = filteredTrending.filter(
+                trending => trending.item && trending.item.location && trending.item.location.includes(filters.location)
+            );
+        }
+
+        // Get total count for pagination
+        const totalEvents = filteredTrending.length;
+
+        // Apply pagination
+        const startIndex = (page - 1) * limit;
+        const endIndex = startIndex + limit;
+        const paginatedTrending = filteredTrending.slice(startIndex, endIndex);
+
+        // Extract events and flatten structure
+        const events = paginatedTrending.map(trending => {
+            return {
+                ...trending.item,
+                trendingStats: trending.stats
+            };
+        });
+
+        // Attach ratings to events
+        const eventsWithRatings = await attachRatingToEvents(events);
+
+        return {
+            events: eventsWithRatings,
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(totalEvents / limit),
+            totalEvents: totalEvents,
+            hasMore: (page - 1) * limit + paginatedTrending.length < totalEvents
+        };
+    } catch (error) {
+        console.error('Error getting trending events:', error);
+        if (!error.statusCode) error.statusCode = 500;
+        throw error;
+    }
+};
+
+// Export the attachRatingToEvents function for use in other services
+exports.attachRatingToEvents = attachRatingToEvents;
 
 
 

@@ -23,8 +23,9 @@ app.use(cors());
 // Rate limiting
 const limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 10000 // limit each IP to 10000 requests per windowMs
+    max: 1000 // limit each IP to 10000 requests per windowMs
 });
+
 app.use(limiter);
 
 // Request logging
@@ -46,6 +47,10 @@ v1Router.use('/user', require('./routes/userRoutes'));
 v1Router.use('/spots', require('./routes/spotRoutes'));
 v1Router.use('/events', require('./routes/eventRoutes'));
 v1Router.use('/reservations', require('./routes/reservationRoutes'));
+v1Router.use('/user-activity', require('./routes/userActivityRoutes'));
+v1Router.use('/points', require('./routes/pointTransactionRoutes'));
+v1Router.use('/referrals', require('./routes/referralRoutes'));
+v1Router.use('/support', require('./routes/chatRoutes'));
 
 // Mount v1 routes
 app.use('/api/v1', v1Router);
@@ -53,7 +58,7 @@ app.use('/api/v1', v1Router);
 // Error handling middleware
 app.use((err, req, res, next) => {
     const { logger } = require('./config/logger');
-    
+
     // Log the error
     logger.error({
         message: err.message,
@@ -66,16 +71,16 @@ app.use((err, req, res, next) => {
 
     // Determine status code
     const statusCode = err.statusCode || 500;
-    
+
     // Send error response
     res.status(statusCode).json({
         status: 'error',
         statusCode,
-        message: process.env.NODE_ENV === 'production' 
-            ? 'An error occurred' 
+        message: process.env.NODE_ENV === 'production'
+            ? 'An error occurred'
             : err.message,
-        stack: process.env.NODE_ENV === 'production' 
-            ? undefined 
+        stack: process.env.NODE_ENV === 'production'
+            ? undefined
             : err.stack
     });
 });
@@ -89,5 +94,5 @@ app.use((req, res) => {
     });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5008;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));

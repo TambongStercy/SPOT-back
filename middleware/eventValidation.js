@@ -6,6 +6,8 @@ const validateEvent = (req, res, next) => {
         name: Joi.string().min(3).max(50).required(),
         description: Joi.string().min(10).required(),
         venue: Joi.string().min(3).max(100).required(),
+        type: Joi.string().required(),
+        profileImage: Joi.string().uri().optional(),
         contactInfo: Joi.object({
             phone: Joi.string().pattern(/^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]*$/).optional(),
             email: Joi.string().email().optional(),
@@ -108,8 +110,58 @@ const validateEventFilters = (req, res, next) => {
     next();
 };
 
+// Validation schema for recommended events
+const validateRecommendedEvents = (req, res, next) => {
+    const schema = Joi.object({
+        page: Joi.number().integer().min(1).default(1),
+        limit: Joi.number().integer().min(1).max(50).default(10),
+        name: Joi.string().optional(),
+        venue: Joi.string().optional(),
+        categories: Joi.alternatives().try(
+            Joi.string(),
+            Joi.array().items(Joi.string())
+        ).optional(),
+        startDate: Joi.date().iso().optional(),
+        endDate: Joi.date().iso().min(Joi.ref('startDate')).optional()
+    });
+
+    const { error } = schema.validate(req.query);
+    if (error) {
+        return res.status(400).json({ msg: error.details[0].message });
+    }
+
+    next();
+};
+
+// Validation schema for trending events
+const validateTrendingEvents = (req, res, next) => {
+    const schema = Joi.object({
+        page: Joi.number().integer().min(1).default(1),
+        limit: Joi.number().integer().min(1).max(50).default(10),
+        days: Joi.number().integer().min(1).max(90).default(30),
+        minActivityScore: Joi.number().min(0).optional(),
+        name: Joi.string().optional(),
+        venue: Joi.string().optional(),
+        categories: Joi.alternatives().try(
+            Joi.string(),
+            Joi.array().items(Joi.string())
+        ).optional(),
+        startDate: Joi.date().iso().optional(),
+        endDate: Joi.date().iso().min(Joi.ref('startDate')).optional()
+    });
+
+    const { error } = schema.validate(req.query);
+    if (error) {
+        return res.status(400).json({ msg: error.details[0].message });
+    }
+
+    next();
+};
+
 module.exports = {
     validateEvent,
     validateBuyTickets,
-    validateEventFilters
+    validateEventFilters,
+    validateRecommendedEvents,
+    validateTrendingEvents
 };

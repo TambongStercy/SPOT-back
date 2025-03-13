@@ -15,6 +15,13 @@ const {
     updateUser,
     deleteUser,
     updateCurrentLocation,
+    getUserDevicesLatestLocations,
+    logoutDevice,
+    getSessionHistory,
+    getDeviceSessionHistory,
+    getSearchHistory,
+    getRecentlyOpenedItems,
+    validateReferralCode,
 } = require('../controllers/user.controller');
 const {
     validateRequestOtp,
@@ -28,6 +35,9 @@ const {
     validateGetFavorites,
     validateFavoriteSpotOperation,
     validateFavoriteEventOperation,
+    validateGetUserDevicesLatestLocations,
+    validateLogoutDevice,
+    validateGetRecentlyOpenedItems
 } = require('../middleware/userValidation');
 const { authenticateUser, optionalAuthenticateUser } = require('../middleware/auth'); // Import the specific function
 const {
@@ -38,6 +48,7 @@ const {
     removeFavoriteEvent,
     getFavoriteEvents
 } = require('../controllers/favorite.controller');
+const { cache } = require('../config/redis');
 
 const upload = multer({ dest: 'uploads/' }); // Temporary storage for uploaded files
 
@@ -62,8 +73,26 @@ router.put('/location', authenticateUser, validateUpdateLocation, updateLocation
 router.post('/location/current', authenticateUser, validateUpdateLocation, updateCurrentLocation);
 
 
-// Route to get location history
+// Route to get location history for a user device
 router.get('/location-history', authenticateUser, getLocationHistory);
+
+// Route to get latest locations for all user devices
+router.get('/devices/locations', authenticateUser, validateGetUserDevicesLatestLocations, getUserDevicesLatestLocations);
+
+// Route to get session history for the user
+router.get('/session-history', authenticateUser, getSessionHistory);
+
+// Route to get session history for a specific device
+router.get('/devices/:deviceId/session-history', authenticateUser, getDeviceSessionHistory);
+
+// Route to get recently opened spots and events for the user (cached for 5 minutes)
+router.get('/recently-opened', authenticateUser, validateGetRecentlyOpenedItems, cache(300), getRecentlyOpenedItems);
+
+// Route to validate a referral code
+router.get('/referral/:code', validateReferralCode);
+
+// Route to logout a specific device
+router.post('/devices/logout', authenticateUser, validateLogoutDevice, logoutDevice);
 
 // Route to upload avatar
 router.post('/avatar', authenticateUser, upload.single('avatar'), validateUploadAvatar, uploadAvatar);

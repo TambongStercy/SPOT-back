@@ -1,0 +1,335 @@
+[{
+  "_id": {
+    "$oid": "67b9aa7ed712313b65265eaa"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:44:14.543Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ab378cbbfdc9c741bf34"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:47:19.625Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ab798cbbfdc9c741bf50"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:48:25.328Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ab938cbbfdc9c741bf5c"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:48:51.561Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9abbf8cbbfdc9c741bf68"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:49:35.497Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ac128cbbfdc9c741bf74"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:50:58.295Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ac208cbbfdc9c741bf83"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:51:12.770Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ac3c8cbbfdc9c741bf8f"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:51:40.352Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9aca195119181c6923261"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:53:21.775Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ad14b9418197b4f69d2e"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:55:16.612Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ad14b9418197b4f69d3a"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:55:16.839Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ad6485ce412764d7310b"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T10:56:36.579Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9ad8149a14baf91e4af3f"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "view",
+  "metadata": {
+    "timeSpentMs": 28447,
+    "originalTimeMs": 28447
+  },
+  "timestamp": {
+    "$date": "2025-02-22T10:57:05.332Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9af20ca68a3c07375382d"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136a49"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T11:04:00.118Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9af26ca68a3c073753831"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136a49"
+  },
+  "itemType": "Spot",
+  "action": "view",
+  "metadata": {
+    "timeSpentMs": 6075,
+    "originalTimeMs": 6075
+  },
+  "timestamp": {
+    "$date": "2025-02-22T11:04:06.402Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9af91ca68a3c073753a8b"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136a49"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T11:05:53.073Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67b9af9bca68a3c073753b3d"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136be1"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-22T11:06:03.962Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67ba6a57ca68a3c0737540d8"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "open",
+  "timestamp": {
+    "$date": "2025-02-23T00:22:47.973Z"
+  },
+  "__v": 0
+},
+{
+  "_id": {
+    "$oid": "67ba6a74ca68a3c0737540dc"
+  },
+  "user": {
+    "$oid": "6773b66da8c2f1780fa2cd16"
+  },
+  "item": {
+    "$oid": "67b69ee884bd34ac34136bc9"
+  },
+  "itemType": "Spot",
+  "action": "view",
+  "metadata": {
+    "timeSpentMs": 28351,
+    "originalTimeMs": 28351
+  },
+  "timestamp": {
+    "$date": "2025-02-23T00:23:16.402Z"
+  },
+  "__v": 0
+}]

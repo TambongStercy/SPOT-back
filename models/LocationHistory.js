@@ -10,7 +10,12 @@ const LocationHistorySchema = new Schema({
     location: {
         type: { type: String, default: 'Point' },  // GeoJSON point
         coordinates: { type: [Number], required: true }  // [longitude, latitude]
-    }
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now,
+        expires: 60*60*24, // Set to the desired time in seconds (1 week in this example)
+    },
 }, {
     timestamps: true
 });

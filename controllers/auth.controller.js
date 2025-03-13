@@ -1,37 +1,53 @@
 const authService = require('../services/auth.services');
 const otpService = require('../services/otp.services');
+const smsService = require('../services/sms.services');
 const emailService = require('../services/email.services');
 const userService = require('../services/user.services');
+const sessionLocationService = require('../services/sessionLocation.service');
 
 // Controller for user registration
 exports.register = async (req, res) => {
     try {
-        const { 
-            name, phone, email, password, 
-            dateOfBirth, sex, avatar, fcmToken, 
-            deviceInfo 
+        const {
+            name, phone, email, password,
+            dateOfBirth, sex, avatar, fcmToken,
+            deviceInfo, location,
+            username, refferalCode
         } = req.body;
-        
+
         console.log(req.body)
 
         // Register the user
-        const { accessToken, user } = await authService.register({ 
-            name, phone, email, password, 
-            dateOfBirth, sex, avatar, 
-            fcmToken, deviceInfo 
+        const { accessToken, user, userDevice } = await authService.register({
+            name, phone, email, password,
+            dateOfBirth, sex, avatar,
+            fcmToken, deviceInfo,
+            username, refferalCode
         });
+
+        // Record session event
+        if (deviceInfo) {
+            await sessionLocationService.recordSessionEvent({
+                userId: user._id,
+                userDeviceId: userDevice._id, // First device created during registration
+                eventType: 'signup',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
 
         // Generate OTP for phone verification
         const otp = await otpService.generateOtp(user._id);
-        
+
         // Send verification email
         const emailContent = emailService.otpVerifyMessage(email, otp);
         await emailService.sendEmail(emailContent.to, emailContent.subject, emailContent.html);
 
-        res.json({ 
-            msg: 'Registration successful. Please verify your phone number.', 
-            accessToken, 
-            user 
+        res.json({
+            msg: 'Registration successful. Please verify your phone number.',
+            accessToken,
+            user
         });
     } catch (err) {
         res.status(400).json({ msg: err.message });
@@ -41,11 +57,28 @@ exports.register = async (req, res) => {
 // Controller for user login
 exports.login = async (req, res) => {
     try {
-        const { email, phone, password, fcmToken, deviceInfo } = req.body;
-        const { accessToken, user } = await authService.login({ 
-            email, phone, password, fcmToken, deviceInfo 
+        const { email, phone, password, fcmToken, deviceInfo, location } = req.body;
+        const { accessToken, user, userDevice } = await authService.login({
+            email, phone, password, fcmToken, deviceInfo
         });
-        res.json({ accessToken, user });
+
+        // Record session event
+        if (deviceInfo) {
+            await sessionLocationService.recordSessionEvent({
+                userId: user._id,
+                userDeviceId: userDevice._id,
+                eventType: 'login',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
+
+        res.json({
+            msg: 'Login successful',
+            accessToken,
+            user,
+        });
     } catch (err) {
         res.status(400).json({ msg: err.message });
     }
@@ -62,47 +95,52 @@ exports.refreshToken = async (req, res) => {
     }
 };
 
-// Controller for phone verification
-exports.verifyPhone = async (req, res) => {
-    try {
-        const { otp } = req.body;
-        const userId = req.user.id;
-
-        // Verify OTP
-        const isValid = await otpService.verifyOtp(userId, otp);
-        if (!isValid) {
-            return res.status(400).json({ msg: 'Invalid OTP' });
-        }
-
-        // Mark phone as verified
-        const user = await authService.verifyPhone(userId);
-        
-        // Delete the OTP
-        await otpService.deleteOtp(userId);
-
-        res.json({ msg: 'Phone number verified successfully', user });
-    } catch (err) {
-        res.status(400).json({ msg: err.message });
-    }
-};
-
 // Controller to logout a user
 exports.logout = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { fcmToken } = req.body;
-        await authService.logout(userId, fcmToken);
+        const { fcmToken, deviceInfo, location } = req.body;
+        const userDevice = await authService.logout(userId, fcmToken);
+
+        // Record session event
+        if (deviceInfo) {
+            await sessionLocationService.recordSessionEvent({
+                userId,
+                userDeviceId: userDevice._id,
+                eventType: 'logout',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
+
         res.json({ msg: 'User logged out successfully' });
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }
 };
 
-// Controller to logout from all devices
+// Controller to logout from all devices(Returns the device that initiated the logout if fcmToken is provided)
 exports.logoutAll = async (req, res) => {
     try {
         const userId = req.user.id;
-        await authService.logoutAll(userId);
+        const { fcmToken, deviceInfo, location } = req.body;
+
+        const userDevice = await authService.logoutAll(userId, fcmToken);
+
+
+        // Record session event
+        if (deviceInfo) {
+            await sessionLocationService.recordSessionEvent({
+                userId,
+                userDeviceId: userDevice._id,
+                eventType: 'logout',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
+
         res.json({ msg: 'Logged out from all devices successfully' });
     } catch (err) {
         res.status(500).json({ msg: err.message });
@@ -120,22 +158,34 @@ exports.getUserDevices = async (req, res) => {
     }
 };
 
-// Forgot password initiation
+// Controller for forgot password
 exports.forgotPassword = async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, deviceInfo, location } = req.body;
         const user = await userService.getUserByEmail(email);
-        
+
         if (!user) {
             return res.status(404).json({ msg: 'User not found' });
         }
 
         // Generate OTP
         const otp = await otpService.generateOtp(user._id);
-        
+
         // Send OTP email
         const emailContent = emailService.otpPasswordMessage(email, otp);
         await emailService.sendEmail(emailContent.to, emailContent.subject, emailContent.html);
+
+        // Record session event if location is provided
+        if (deviceInfo) {
+            // Use the first device for recording the event
+            await sessionLocationService.recordSessionEvent({
+                userId: user._id,
+                eventType: 'forgotPassword',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
 
         res.json({ msg: 'Password reset OTP sent to email' });
     } catch (err) {
@@ -148,7 +198,7 @@ exports.verifyForgotPasswordOtp = async (req, res) => {
     try {
         const { email, otp } = req.body;
         const user = await userService.getUserByEmail(email);
-        
+
         const isValid = await otpService.verifyOtp(user._id, otp);
         if (!isValid) {
             return res.status(400).json({ msg: 'Invalid OTP' });
@@ -163,7 +213,7 @@ exports.verifyForgotPasswordOtp = async (req, res) => {
 // Reset password after OTP verification
 exports.resetForgotPassword = async (req, res) => {
     try {
-        const { email, otp, newPassword } = req.body;
+        const { email, otp, newPassword, deviceInfo, location } = req.body;
         const user = await userService.getUserByEmail(email);
 
         // Verify OTP again for security
@@ -174,9 +224,21 @@ exports.resetForgotPassword = async (req, res) => {
 
         // Reset password
         await userService.resetPassword(user._id, newPassword);
-        
+
         // Delete OTP after successful password reset
         await otpService.deleteOtp(user._id);
+
+        // Record session event if location is provided
+        if (deviceInfo) {
+            // Use the first device for recording the event
+            await sessionLocationService.recordSessionEvent({
+                userId: user._id,
+                eventType: 'resetPassword',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
 
         // Logout from all devices for security
         await authService.logoutAll(user._id);
@@ -190,7 +252,7 @@ exports.resetForgotPassword = async (req, res) => {
 // Request email verification
 exports.requestEmailVerification = async (req, res) => {
     try {
-        const { email } = req.body;
+        const { email, deviceInfo, location } = req.body;
         const user = await userService.getUserByEmail(email);
 
         if (!user) {
@@ -199,12 +261,76 @@ exports.requestEmailVerification = async (req, res) => {
 
         // Generate OTP
         const otp = await otpService.generateOtp(user._id);
-        
+
         // Send verification email
         const emailContent = emailService.otpVerifyMessage(email, otp);
         await emailService.sendEmail(emailContent.to, emailContent.subject, emailContent.html);
 
+        // Record session event if location is provided
+        if (deviceInfo) {
+            // Use the first device for recording the event
+            await sessionLocationService.recordSessionEvent({
+                userId: user._id,
+                eventType: 'emailVerification',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
+
         res.json({ msg: 'Email verification OTP sent' });
+    } catch (err) {
+        res.status(500).json({ msg: err.message });
+    }
+};
+
+// Request phone verification
+exports.requestPhoneVerification = async (req, res) => {
+    try {
+        const { phone, deviceInfo, location } = req.body;
+        const user = await userService.getUserByPhone(phone);
+
+        if (!user) {
+            return res.status(404).json({ msg: 'User not found' });
+        }
+
+        const otp = await otpService.generateOtp(user._id);
+
+        // const smsContent = smsService.otpVerifyMessage(user.phone, otp);
+        // await smsService.sendSms(smsContent.to, smsContent.message);
+
+        // // Record session event if location is provided
+        // if (deviceInfo) {
+        //     // Use the first device for recording the event
+        //     await sessionLocationService.recordSessionEvent({
+        //         userId: user._id,
+        //         eventType: 'phoneVerification',
+        //         location: location,
+        //         deviceInfo: deviceInfo,
+        //         ipAddress: req.ip
+        //     });
+        // }
+
+        const email = user.email;
+
+        // Send verification email
+        const emailContent = emailService.otpVerifyMessage(email, otp);
+        await emailService.sendEmail(emailContent.to, emailContent.subject, emailContent.html);
+
+        // Record session event if location is provided
+        if (deviceInfo) {
+            // Use the first device for recording the event
+            await sessionLocationService.recordSessionEvent({
+                userId: user._id,
+                eventType: 'phoneVerification',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
+
+
+        res.json({ msg: 'Phone verification OTP sent(Not implemented yet)' });
     } catch (err) {
         res.status(500).json({ msg: err.message });
     }
@@ -213,35 +339,84 @@ exports.requestEmailVerification = async (req, res) => {
 // Verify email with OTP
 exports.verifyEmail = async (req, res) => {
     try {
-        const { email, otp } = req.body;
-        const user = await userService.getUserByEmail(email);
+        const userId = req.user.id;
+        const { code } = req.body;
 
-        // Verify OTP
-        const isValid = await otpService.verifyOtp(user._id, otp);
+        // Verify the code logic here...
+        const isValid = await otpService.verifyOtp(userId, code);
         if (!isValid) {
             return res.status(400).json({ msg: 'Invalid OTP' });
         }
 
-        // Mark email as verified
-        await userService.verifyEmail(user._id);
-        
-        // Delete OTP after successful verification
-        await otpService.deleteOtp(user._id);
 
-        res.json({ msg: 'Email verified successfully' });
-    } catch (err) {
-        res.status(400).json({ msg: err.message });
+        // If verification successful, handle the verification
+        const result = await authService.handleUserVerification(userId, 'email');
+
+        res.status(200).json({
+            success: true,
+            message: 'Email verified successfully',
+            user: result.user,
+            referralResults: result.referralResults
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
     }
 };
+
+
+// Controller for phone verification
+exports.verifyPhone = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { code } = req.body;
+
+        // Verify the code logic here...
+        const isValid = await otpService.verifyOtp(userId, code);
+        if (!isValid) {
+            return res.status(400).json({ msg: 'Invalid OTP' });
+        }
+
+        // If verification successful, handle the verification
+        const result = await authService.handleUserVerification(userId, 'phone');
+
+        res.status(200).json({
+            success: true,
+            message: 'Phone verified successfully',
+            user: result.user,
+            referralResults: result.referralResults
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+};
+
 
 // Controller to change password
 exports.changePassword = async (req, res) => {
     try {
-        const { oldPassword, newPassword } = req.body;
+        const { oldPassword, newPassword , deviceInfo, location } = req.body;
         const userId = req.user.id;
 
         await authService.changePassword({ userId, oldPassword, newPassword });
-        
+
+        // Record session event if location is provided
+        if (deviceInfo) {
+            // Use the first device for recording the event
+            await sessionLocationService.recordSessionEvent({
+                userId: userId,
+                eventType: 'changePassword',
+                location: location,
+                deviceInfo: deviceInfo,
+                ipAddress: req.ip
+            });
+        }
+
         res.json({ msg: 'Password changed successfully' });
     } catch (err) {
         res.status(err.statusCode || 400).json({ msg: err.message });

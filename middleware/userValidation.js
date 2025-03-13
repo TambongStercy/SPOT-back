@@ -50,8 +50,34 @@ exports.validateVerifyEmail = (req, res, next) => {
 exports.validateModifyUserInfo = (req, res, next) => {
     const schema = Joi.object({
         name: Joi.string().min(3).max(50).optional(),
-        avatar: Joi.string().uri().optional(),
+        username: Joi.string().min(3).max(50).optional()
+            .custom((value, helpers) => {
+                // If username is provided, validate it
+                if (value) {
+                    // Remove '@' if it exists to check the actual username length
+                    const usernameWithoutAt = value.startsWith('@') ? value.substring(1) : value;
+
+                    // Check if username (without @) is too short
+                    if (usernameWithoutAt.length < 2) {
+                        return helpers.error('string.usernameMinLength');
+                    }
+
+                    // Check if username contains only valid characters
+                    if (!/^[a-zA-Z0-9_]+$/.test(usernameWithoutAt)) {
+                        return helpers.error('string.usernameInvalid');
+                    }
+                }
+                return value;
+            })
+            .messages({
+                'string.usernameMinLength': 'Username must be at least 3 characters long (including @)',
+                'string.usernameInvalid': 'Username can only contain letters, numbers, and underscores'
+            }),
+        refferalCode: Joi.string().optional(),
+        sex: Joi.string().valid('Male', 'Female', 'Other').optional(),
         dateOfBirth: Joi.date().optional(),
+        deviceInfo: Joi.string().optional(),
+        location: Joi.object().optional()
     });
 
     const { error } = schema.validate(req.body);
@@ -171,6 +197,47 @@ exports.validateGetFavorites = (req, res, next) => {
     if (error) {
         return res.status(400).json({ msg: error.details[0].message });
     }
+    next();
+};
+
+// Validate getting user devices latest locations
+exports.validateGetUserDevicesLatestLocations = (req, res, next) => {
+    // No specific validation needed as it uses the authenticated user's ID
+    next();
+};
+
+// Validate logout device operation
+exports.validateLogoutDevice = (req, res, next) => {
+    const schema = Joi.object({
+        fcmToken: Joi.string().required().messages({
+            'string.empty': 'FCM Token is required',
+            'any.required': 'FCM Token is required'
+        })
+    });
+
+    const { error } = schema.validate(req.body);
+    if (error) {
+        return res.status(400).json({ msg: error.details[0].message });
+    }
+    next();
+};
+
+// Validation schema for getting recently opened items
+exports.validateGetRecentlyOpenedItems = (req, res, next) => {
+    const schema = Joi.object({
+        itemType: Joi.string().valid('Spot', 'Event'),
+        page: Joi.number().integer().min(1),
+        limit: Joi.number().integer().min(1).max(100)
+    });
+
+    const { error } = schema.validate(req.query);
+    if (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.details[0].message
+        });
+    }
+
     next();
 };
 

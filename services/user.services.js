@@ -1,7 +1,7 @@
 // userService.js
 const User = require('../models/User');
 const LocationHistory = require('../models/LocationHistory');
-const CurrentLocation = require('../models/CurrentLocation');
+const CurrentLocation = require('../models/SessionLocation');
 const uploadService = require('./upload.services');
 const bcrypt = require('bcryptjs');
 const UserDevice = require('../models/UserDevice');
@@ -12,17 +12,6 @@ exports.resetPassword = async (userId, newPassword) => {
     if (!user) throw new Error('User not found');
 
     user.password = await bcrypt.hash(newPassword, 10);
-    await user.save();
-
-    return user;
-};
-
-// Service to verify email using OTP
-exports.verifyEmail = async (userId) => {
-    const user = await User.findById(userId);
-    if (!user) throw new Error('User not found');
-
-    user.verifiedEmail = true;  // Set email as verified
     await user.save();
 
     return user;
@@ -43,6 +32,20 @@ exports.updateUserInfo = async (userId, updates) => {
         updates.verifiedEmail = false; // Reset email verification
     }
 
+    // Check if username is being updated
+    if (updates.username && updates.username !== user.username) {
+        // Ensure username starts with '@'
+        if (!updates.username.startsWith('@')) {
+            updates.username = '@' + updates.username;
+        }
+
+        // Check if new username already exists
+        const usernameExists = await User.findOne({ username: updates.username });
+        if (usernameExists) {
+            throw new Error('Username already taken');
+        }
+    }
+
     // Check if phone is being updated
     if (updates.phone && updates.phone !== user.phone) {
         // Check if new phone already exists
@@ -50,14 +53,11 @@ exports.updateUserInfo = async (userId, updates) => {
         if (phoneExists) {
             throw new Error('Phone number already registered');
         }
-        updates.verifiedPhone = false; // Reset phone verification
+        updates.phoneVerified = false; // Reset phone verification
     }
 
-    // Update user with the new information
-    Object.assign(user, updates);
-    await user.save();
-
-    return user;
+    // Update user and return updated document
+    return await User.findByIdAndUpdate(userId, updates, { new: true });
 };
 
 // Service to modify email (with OTP verification)
@@ -183,19 +183,21 @@ exports.updateUserLocation = async ({ userId, fcmToken, lon, lat }) => {
 
 // Service to get the user's location history across all devices
 exports.getUserLocationHistory = async (userId, options = {}) => {
-    const { 
-        startDate, 
-        endDate, 
-        limit = 100, 
-        fcmToken = null 
+    const {
+        startDate,
+        endDate,
+        limit = 100,
+        fcmToken = null
     } = options;
 
     // Start building the query
     const query = {};
-    
+
     if (fcmToken) {
         // If fcmToken is provided, get history for specific device
-        const device = await UserDevice.findOne({ fcmToken, user: userId });
+        const device = await UserDevice.findOne({ fcmToken: fcmToken, user: userId });
+        console.log(device);
+
         if (!device) {
             throw new Error('Device not found for this user');
         }
@@ -213,10 +215,11 @@ exports.getUserLocationHistory = async (userId, options = {}) => {
         if (endDate) query.createdAt.$lte = new Date(endDate);
     }
 
+
     const history = await LocationHistory.find(query)
         .sort({ createdAt: -1 })
         .limit(limit)
-        .populate('userDevice', 'deviceInfo fcmToken');
+        .populate('userDevice', '_id deviceInfo fcmToken');
 
     return history;
 };
@@ -224,15 +227,17 @@ exports.getUserLocationHistory = async (userId, options = {}) => {
 // Service to get the latest location for each of user's devices
 exports.getUserDevicesLatestLocations = async (userId) => {
     const userDevices = await UserDevice.find({ user: userId });
-    
+
+
     const latestLocations = await Promise.all(
         userDevices.map(async device => {
             const latest = await LocationHistory.findOne({ userDevice: device._id })
                 .sort({ createdAt: -1 })
-                .populate('userDevice', 'deviceInfo fcmToken');
+                .populate('userDevice', '_id deviceInfo fcmToken');
             return {
                 device: {
-                    info: device.deviceInfo,
+                    _id: device._id,
+                    deviceInfo: device.deviceInfo,
                     fcmToken: device.fcmToken
                 },
                 location: latest
@@ -301,6 +306,12 @@ exports.getUserByEmail = async (email) => {
     return user;
 };
 
+exports.getUserByPhone = async (phone) => {
+    const user = await User.findOne({ phone }).lean();
+    if (!user) throw new Error('User not found');
+    return user;
+}
+
 // Service to update user details
 exports.updateUser = async (userId, updates) => {
     const updatedUser = await User.findByIdAndUpdate(userId, updates, { new: true }).lean();
@@ -315,7 +326,26 @@ exports.deleteUser = async (userId) => {
     return deletedUser;
 };
 
-// module.exports = userService = { 
-//     getUserById, 
-//     updateUserById 
-// };
+// Service to logout a specific device
+exports.logoutDevice = async (userId, fcmToken) => {
+    // Find the user device
+    const userDevice = await UserDevice.findOne({ fcmToken });
+    if (!userDevice) {
+        throw new Error('Device not found. Please register your device first.');
+    }
+
+    // Check if device belongs to the user
+    if (userDevice.user.toString() !== userId) {
+        throw new Error('This device is not registered to your account');
+    }
+
+    // Deactivate the device
+    userDevice.isActive = false;
+    await userDevice.save();
+
+    return true;
+};
+
+// handleUserVerification and validateReferralCode have been removed
+// They are now in their respective service files
+

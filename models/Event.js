@@ -5,6 +5,7 @@ const EventSchema = new Schema({
     name: { type: String, required: true },
     description: { type: String, required: true },
     venue: { type: String, required: true },  // Name of the location/venue
+    type: { type: String, required: true },
     contactInfo: {
         phone: { type: String },
         email: { type: String },
@@ -52,6 +53,7 @@ const EventSchema = new Schema({
         coordinates: { type: [Number], required: true }  // [longitude, latitude]
     },
     locationDescription: { type: String, trim: true },  // Added location description
+    profileImage: { type: String, trim: true },  // Profile image of the event
     images: [{ type: String, trim: true }],  // Event images
     ticketImage: { type: String, trim: true },  // Image of the ticket
     tickets: [{

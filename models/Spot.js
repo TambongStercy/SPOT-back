@@ -99,6 +99,11 @@ const SpotSchema = new Schema({
 // Create geospatial index for location
 SpotSchema.index({ location: '2dsphere' });
 
+// Create geospatial index for location coordinates
+SpotSchema.index({
+    'location.coordinates': '2dsphere'
+});
+
 // Create text index for searching
 SpotSchema.index({ 
     name: 'text', 

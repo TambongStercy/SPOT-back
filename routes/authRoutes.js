@@ -11,6 +11,7 @@ const {
     verifyForgotPasswordOtp,
     resetForgotPassword,
     requestEmailVerification,
+    requestPhoneVerification,
     verifyEmail,
     changePassword,
     refreshToken,
@@ -33,7 +34,7 @@ router.post('/forgot-password', validateForgotPassword, forgotPassword);
 router.post('/verify-forgot-password', verifyForgotPasswordOtp);
 router.post('/reset-forgot-password', resetForgotPassword);
 router.post('/request-email-verification', validateEmailVerification, requestEmailVerification);
-// router.post('/request-phone-verification', validatePhoneVerification, requestPhoneVerification);
+router.post('/request-phone-verification', validatePhoneVerification, requestPhoneVerification);
 router.post('/verify-email', validateEmailVerification, verifyEmail);
 router.post('/verify-phone', validatePhoneVerification, verifyPhone);
 
