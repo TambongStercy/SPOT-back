@@ -3,7 +3,7 @@ const { Schema } = mongoose;
 
 const UserActivitySchema = new Schema({
     user: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-    item: { type: Schema.Types.ObjectId, required: true }, // Refers to Spot or Event
+    item: { type: Schema.Types.ObjectId, required: true, refPath: 'itemType' }, // Refers to Spot or Event
     itemType: { type: String, enum: ['Spot', 'Event'], required: true },
     action: {
         type: String,

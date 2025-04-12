@@ -2,6 +2,7 @@ const userService = require('../services/user.services');
 const otpService = require('../services/otp.services');
 const emailService = require('../services/email.services');
 const referralService = require('../services/referral.service');
+const { attachRatingToSpots, attachRatingToEvents } = require('../helpers/attacherating');
 
 // Controller to handle general OTP requests with a reason field
 exports.requestOtp = async (req, res) => {
@@ -179,22 +180,30 @@ exports.getLocationHistory = async (req, res) => {
 // Controller for getting user's session history
 exports.getSessionHistory = async (req, res) => {
     try {
-        const { startDate, endDate, limit, eventType } = req.query;
+        const { startDate, endDate, limit, page, eventType } = req.query;
 
         const sessionLocationService = require('../services/sessionLocation.service');
-        const sessionHistory = await sessionLocationService.getUserSessionHistory(
+        const result = await sessionLocationService.getUserSessionHistory(
             req.user.id,
             {
                 startDate,
                 endDate,
-                limit: limit ? parseInt(limit) : undefined,
+                page: page ? parseInt(page) : 1,
+                limit: limit ? parseInt(limit) : 20,
                 eventType
             }
         );
 
-        res.json({ sessionHistory });
+        res.json({
+            success: true,
+            sessions: result.sessions,
+            pagination: result.pagination
+        });
     } catch (err) {
-        res.status(500).json({ msg: err.message });
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
     }
 };
 
@@ -202,23 +211,31 @@ exports.getSessionHistory = async (req, res) => {
 exports.getDeviceSessionHistory = async (req, res) => {
     try {
         const { deviceId } = req.params;
-        const { startDate, endDate, limit, eventType } = req.query;
+        const { startDate, endDate, limit, page, eventType } = req.query;
 
         const sessionLocationService = require('../services/sessionLocation.service');
         // Verify that the device belongs to the user
-        const sessionHistory = await sessionLocationService.getDeviceSessionHistory(
+        const result = await sessionLocationService.getDeviceSessionHistory(
             deviceId,
             {
                 startDate,
                 endDate,
-                limit: limit ? parseInt(limit) : undefined,
+                page: page ? parseInt(page) : 1,
+                limit: limit ? parseInt(limit) : 20,
                 eventType
             }
         );
 
-        res.json({ sessionHistory });
+        res.json({
+            success: true,
+            sessions: result.sessions,
+            pagination: result.pagination
+        });
     } catch (err) {
-        res.status(500).json({ msg: err.message });
+        res.status(500).json({
+            success: false,
+            message: err.message
+        });
     }
 };
 
@@ -392,6 +409,20 @@ exports.getRecentlyOpenedItems = async (req, res) => {
             }
         );
 
+        if (itemType?.toLowerCase() === 'spot') {
+            recentlyOpenedItems.items = await attachRatingToSpots(recentlyOpenedItems.items);
+        } else if (itemType?.toLowerCase() === 'event') {
+            recentlyOpenedItems.items = await attachRatingToEvents(recentlyOpenedItems.items);
+        } else {
+            for (const item of recentlyOpenedItems.items) {
+                if (item.itemType.toLowerCase() === 'spot') {
+                    item.item = await attachRatingToSpots(item.item);
+                } else if (item.itemType.toLowerCase() === 'event') {
+                    item.item = await attachRatingToEvents(item.item);
+                }
+            }
+        }
+
         res.status(200).json({
             success: true,
             ...recentlyOpenedItems
@@ -429,6 +460,36 @@ exports.validateReferralCode = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to validate referral code',
+            error: err.message
+        });
+    }
+};
+
+// Controller for syncing user information
+exports.syncUserInfo = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { lastSyncTimestamp } = req.query;
+
+        // Get the user with selected fields
+        const user = await userService.getUserById(userId, {
+            select: 'name username email phone phoneVerified verifiedEmail points refferalCode avatar dateOfBirth sex role updatedAt'
+        });
+
+        // Check if user data has been updated since last sync
+        const hasUpdates = !lastSyncTimestamp || new Date(user.updatedAt) > new Date(lastSyncTimestamp);
+
+        res.json({
+            success: true,
+            hasUpdates,
+            syncTimestamp: new Date().toISOString(),
+            user: user.toJSON()
+        });
+    } catch (err) {
+        console.error('Error syncing user info:', err);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to sync user information',
             error: err.message
         });
     }

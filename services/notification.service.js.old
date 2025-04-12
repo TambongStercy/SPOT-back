@@ -3,89 +3,6 @@ const UserDevice = require('../models/UserDevice');
 const User = require('../models/User');
 
 /**
- * Retry a function with exponential backoff
- * @param {Function} fn - Function to retry
- * @param {Number} maxRetries - Maximum number of retries
- * @param {Number} initialDelay - Initial delay in milliseconds
- * @returns {Promise<any>} - Result of the function
- */
-const retryWithBackoff = async (fn, maxRetries = 3, initialDelay = 1000) => {
-    let retries = 0;
-    let delay = initialDelay;
-
-    while (retries < maxRetries) {
-        try {
-            return await fn();
-        } catch (error) {
-            // If this is the last retry, throw the error
-            if (retries === maxRetries - 1) {
-                throw error;
-            }
-
-            // Check if it's a network error
-            const isNetworkError = error.message && (
-                error.message.includes('ENOTFOUND') ||
-                error.message.includes('ETIMEDOUT') ||
-                error.message.includes('ECONNREFUSED') ||
-                error.message.includes('ECONNRESET') ||
-                error.message.includes('fetch a valid Google OAuth2 access token')
-            );
-
-            // Only retry for network errors
-            if (!isNetworkError) {
-                throw error;
-            }
-
-            // Wait before retrying
-            await new Promise(resolve => setTimeout(resolve, delay));
-
-            // Increase delay for next retry (exponential backoff)
-            delay *= 2;
-            retries++;
-
-            console.log(`Retrying FCM operation after network error (attempt ${retries}/${maxRetries}): ${error.message}`);
-        }
-    }
-};
-
-/**
- * Clean up invalid FCM tokens
- * @param {Array} responses - Array of notification responses
- * @param {Array} tokens - Array of FCM tokens
- * @returns {Promise<Number>} - Number of tokens cleaned up
- */
-exports.cleanupInvalidTokens = async (responses, tokens) => {
-    try {
-        const invalidTokens = [];
-
-        // Identify invalid tokens from the responses
-        responses.forEach((response, index) => {
-            if (!response.success &&
-                (response.error.includes("Requested entity was not found") ||
-                    response.error.includes("registration token is not a valid FCM registration token"))) {
-                invalidTokens.push(tokens[index]);
-            }
-        });
-
-        if (invalidTokens.length > 0) {
-            // Remove invalid tokens from the database
-            const result = await UserDevice.updateMany(
-                { fcmToken: { $in: invalidTokens } },
-                { $set: { isActive: false } }
-            );
-
-            console.log(`Cleaned up ${result.modifiedCount} invalid FCM tokens`);
-            return result.modifiedCount;
-        }
-
-        return 0;
-    } catch (error) {
-        console.error('Error cleaning up invalid tokens:', error);
-        return 0;
-    }
-};
-
-/**
  * Send a notification to a specific user
  * @param {String} userId - User ID
  * @param {Object} notification - Notification data
@@ -112,6 +29,19 @@ exports.sendUserNotification = async (userId, notification, data = {}) => {
             return { success: false, message: 'No valid FCM tokens found' };
         }
 
+        // Prepare message
+        const message = {
+            notification: {
+                title: notification.title,
+                body: notification.body
+            },
+            data: {
+                ...data,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            },
+            tokens: tokens
+        };
+
         // Send messages individually instead of using batch/multicast
         const sendPromises = tokens.map(token => {
             const message = {
@@ -125,12 +55,10 @@ exports.sendUserNotification = async (userId, notification, data = {}) => {
                 },
                 token: token // Send to individual token
             };
-
-            // Use retry logic for each send operation
-            return retryWithBackoff(() => admin.messaging().send(message));
+            return admin.messaging().send(message);
         });
 
-        // Wait for all messages to be sent, catching errors
+        // Wait for all messages to be sent
         const results = await Promise.all(sendPromises.map(p => p.catch(e => e)));
 
         // Count successes and failures
@@ -139,22 +67,16 @@ exports.sendUserNotification = async (userId, notification, data = {}) => {
 
         console.log(`Successfully sent notifications to ${successCount} devices`);
 
-        // Process responses for cleanup
-        const responses = results.map(result => {
-            if (result instanceof Error) {
-                return { success: false, error: result.message };
-            }
-            return { success: true, messageId: result };
-        });
-
-        // Clean up invalid tokens
-        await exports.cleanupInvalidTokens(responses, tokens);
-
         return {
             success: true,
             successCount,
             failureCount,
-            responses
+            responses: results.map(result => {
+                if (result instanceof Error) {
+                    return { success: false, error: result.message };
+                }
+                return { success: true, messageId: result };
+            })
         };
     } catch (error) {
         console.error('Error sending notification:', error);
@@ -261,6 +183,39 @@ exports.sendAdminNotification = async (notification, data = {}) => {
         // Add notification ID for analytics
         data.notificationId = Date.now().toString(36) + Math.random().toString(36).substr(2);
 
+        // Prepare message
+        const message = {
+            notification: {
+                title: notification.title,
+                body: notification.body
+            },
+            data: {
+                ...data,
+                click_action: 'FLUTTER_NOTIFICATION_CLICK'
+            },
+            tokens: tokens,
+            android: {
+                priority: 'high',
+                notification: {
+                    clickAction: 'FLUTTER_NOTIFICATION_CLICK',
+                    channelId: 'admin_notifications'
+                }
+            },
+            apns: {
+                payload: {
+                    aps: {
+                        'mutable-content': 1,
+                        'content-available': 1
+                    }
+                }
+            }
+        };
+
+        // Send message
+        const response = await admin.messaging().sendMulticast(message);
+
+        console.log(`Successfully sent admin notifications to ${response.successCount} devices`);
+
         // Send messages individually instead of using batch/multicast
         const sendPromises = tokens.map(token => {
             const message = {
@@ -289,12 +244,10 @@ exports.sendAdminNotification = async (notification, data = {}) => {
                     }
                 }
             };
-
-            // Use retry logic for each send operation
-            return retryWithBackoff(() => admin.messaging().send(message));
+            return admin.messaging().send(message);
         });
 
-        // Wait for all messages to be sent, catching errors
+        // Wait for all messages to be sent
         const results = await Promise.all(sendPromises.map(p => p.catch(e => e)));
 
         // Count successes and failures
@@ -303,22 +256,19 @@ exports.sendAdminNotification = async (notification, data = {}) => {
 
         console.log(`Successfully sent admin notifications to ${successCount} devices`);
 
-        // Process responses for cleanup
-        const responses = results.map(result => {
-            if (result instanceof Error) {
-                return { success: false, error: result.message };
-            }
-            return { success: true, messageId: result };
-        });
-
-        // Clean up invalid tokens
-        await exports.cleanupInvalidTokens(responses, tokens);
+        // Store notification analytics if needed
+        // await storeNotificationForAnalytics(data.notificationId, 'admin', notification.title, notification.body, data.category);
 
         return {
             success: true,
             successCount,
             failureCount,
-            responses
+            responses: results.map(result => {
+                if (result instanceof Error) {
+                    return { success: false, error: result.message };
+                }
+                return { success: true, messageId: result };
+            })
         };
     } catch (error) {
         console.error('Error sending admin notification:', error);

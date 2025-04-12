@@ -404,6 +404,7 @@ const getUserRecentlyOpenedItems = async (userId, options = {}) => {
         // Count total open activities
         const total = await UserActivity.countDocuments(query);
 
+
         // Get paginated open activities with populated item data
         const openActivities = await UserActivity.find(query)
             .sort({ timestamp: -1 }) // Most recent first
@@ -415,27 +416,21 @@ const getUserRecentlyOpenedItems = async (userId, options = {}) => {
             })
             .lean();
 
+
         // Format the recently opened items
         const recentlyOpenedItems = openActivities
             .filter(activity => activity.item) // Filter out any null items (might have been deleted)
             .map(activity => ({
-                id: activity._id,
-                itemId: activity.item._id,
                 itemType: activity.itemType,
-                name: activity.item.name,
-                type: activity.item.type,
-                description: activity.item.description,
-                location: activity.item.location,
-                profileImage: activity.item.profileImage,
-                coverImage: activity.item.coverImage,
-                timestamp: activity.timestamp
+                timestamp: activity.timestamp,
+                item: activity.item,
             }));
 
         return {
             totalPages: Math.ceil(total / limit),
             currentPage: parseInt(page),
             totalItems: total,
-            recentlyOpenedItems,
+            items: recentlyOpenedItems,
             hasMore: (page - 1) * limit + recentlyOpenedItems.length < total
         };
     } catch (error) {

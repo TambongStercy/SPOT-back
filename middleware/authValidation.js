@@ -35,7 +35,7 @@ exports.validateRegister = (req, res, next) => {
             }),
         fcmToken: Joi.string().required(),
         deviceInfo: Joi.string().required(),
-        location: Joi.string().optional(),
+        location: Joi.object().optional(),
     });
 
     const { error } = schema.validate(req.body);
@@ -53,7 +53,7 @@ exports.validateLogin = (req, res, next) => {
         password: Joi.string().required(),
         fcmToken: Joi.string().required(),
         deviceInfo: Joi.string().required(),
-        location: Joi.string().optional(),
+        location: Joi.object().optional(),
     }).xor('email', 'phone'); // Require either email or phone, but not both
 
     const { error } = schema.validate(req.body);
@@ -70,8 +70,8 @@ exports.validateLoginWithPhone = (req, res, next) => {
         password: Joi.string().min(6).required(),
         fcmToken: Joi.string().required(),
         deviceInfo: Joi.string().required(),
-        location: Joi.string().optional(),
-    });
+        location: Joi.object().optional(),
+    }); 
 
     const { error } = schema.validate(req.body);
     if (error) {

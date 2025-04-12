@@ -4,27 +4,8 @@ const { paginate } = require('../helpers/paginate');
 const { trackSearch, trackOpening, getRecommendations, getTrendingItems, getUserPreferences } = require('./userActivity.services');
 const { getRatingStats } = require('./rating.services');
 const { queryFromFilter } = require('../helpers/queryfrom');
+const { attachRatingToEvents } = require('../helpers/attacherating');
 
-// Helper function to attach rating information to events
-const attachRatingToEvents = async (events) => {
-    if (Array.isArray(events)) {
-        const eventsWithRating = await Promise.all(events.map(async (event) => {
-            const eventObj = event.toObject ? event.toObject() : event;
-            const stats = await getRatingStats(event._id, 'event');
-            eventObj.rating = stats.averageRating;
-            eventObj.numberOfRatings = stats.numberOfRatings;
-            return eventObj;
-        }));
-        return eventsWithRating;
-    } else if (events) {
-        const eventObj = events.toObject ? events.toObject() : events;
-        const stats = await getRatingStats(events._id, 'event');
-        eventObj.rating = stats.averageRating;
-        eventObj.numberOfRatings = stats.numberOfRatings;
-        return eventObj;
-    }
-    return null;
-};
 
 exports.createEvent = async (eventData) => {
     try {

@@ -5,6 +5,8 @@ const CurrentLocation = require('../models/SessionLocation');
 const uploadService = require('./upload.services');
 const bcrypt = require('bcryptjs');
 const UserDevice = require('../models/UserDevice');
+const Favorite = require('../models/Favorite');
+const FavoriteEvent = require('../models/FavoriteEvent');
 
 // Service to reset password after OTP verification
 exports.resetPassword = async (userId, newPassword) => {
@@ -292,9 +294,16 @@ exports.getUsers = async ({ page = 1, limit = 10, filters = {}, sortBy = 'points
     };
 };
 
-// Service to get a user by ID
-exports.getUserById = async (userId) => {
-    const user = await User.findById(userId).lean();  // Use lean() to get plain JS object
+// Service to get a user by ID with optional field selection
+exports.getUserById = async (userId, options = {}) => {
+    const query = User.findById(userId);
+
+    // Apply field selection if provided
+    if (options.select) {
+        query.select(options.select);
+    }
+
+    const user = await query.exec();
     if (!user) throw new Error('User not found');
     return user;
 };
@@ -348,4 +357,26 @@ exports.logoutDevice = async (userId, fcmToken) => {
 
 // handleUserVerification and validateReferralCode have been removed
 // They are now in their respective service files
+
+// Get count of user's favorite spots and events
+exports.getFavoritesCount = async (userId) => {
+    const [spotCount, eventCount] = await Promise.all([
+        Favorite.countDocuments({ user: userId }),
+        FavoriteEvent.countDocuments({ user: userId })
+    ]);
+
+    return {
+        spots: spotCount,
+        events: eventCount,
+        total: spotCount + eventCount
+    };
+};
+
+// Get count of user's active devices
+exports.getActiveDevicesCount = async (userId) => {
+    return await UserDevice.countDocuments({
+        user: userId,
+        isActive: true
+    });
+};
 

@@ -3,7 +3,7 @@ const Rating = require('../models/Rating');
 const { paginate } = require('../helpers/paginate');
 const { trackSearch, trackOpening, getRecommendations, getTrendingItems, getUserPreferences } = require('./userActivity.services');
 const UserActivity = require('../models/UserActivity');
-const { getRatingStats } = require('./rating.services');
+const { attachRatingToSpots } = require('../helpers/attacherating');
 
 // Define the projection for list views
 const LIST_PROJECTION = {
@@ -141,26 +141,6 @@ const queryFromFilter = (filters) => {
     return query;
 };
 
-// Helper function to attach rating stats to spot(s)
-const attachRatingToSpots = async (spots) => {
-    if (Array.isArray(spots)) {
-        const spotsWithRating = await Promise.all(spots.map(async (spot) => {
-            const spotObj = spot.toObject ? spot.toObject() : spot;
-            const stats = await getRatingStats(spot._id, 'spot');
-            spotObj.rating = stats.averageRating;
-            spotObj.numberOfRatings = stats.numberOfRatings;
-            return spotObj;
-        }));
-        return spotsWithRating;
-    } else if (spots) {
-        const spotObj = spots.toObject ? spots.toObject() : spots;
-        const stats = await getRatingStats(spots._id, 'spot');
-        spotObj.rating = stats.averageRating;
-        spotObj.numberOfRatings = stats.numberOfRatings;
-        return spotObj;
-    }
-    return null;
-};
 
 // Service to create a new spot
 exports.createSpot = async ({ name, description, menuImages, town, contacts, type, categories, cuisine, location, budget, coverImage, profileImage, daysAndTimes }) => {
@@ -310,7 +290,7 @@ exports.getRecommendedSpots = async ({ userId, page = 1, limit = 10, filters = {
             let score = 0;
 
             // Score based on categories
-            if (preferences.categories.length) {
+            if (preferences.categories.length && spot.categories && Array.isArray(spot.categories)) {
                 spot.categories.forEach(category => {
                     const categoryIndex = preferences.categories.indexOf(category);
                     if (categoryIndex !== -1) {
@@ -321,13 +301,13 @@ exports.getRecommendedSpots = async ({ userId, page = 1, limit = 10, filters = {
             }
 
             // Score based on type
-            if (preferences.types.length && preferences.types.includes(spot.type)) {
+            if (preferences.types.length && spot.type && preferences.types.includes(spot.type)) {
                 const typeIndex = preferences.types.indexOf(spot.type);
                 score += (preferences.types.length - typeIndex) * 2;
             }
 
             // Score based on town
-            if (preferences.towns.length && preferences.towns.includes(spot.town)) {
+            if (preferences.towns.length && spot.town && preferences.towns.includes(spot.town)) {
                 const townIndex = preferences.towns.indexOf(spot.town);
                 score += (preferences.towns.length - townIndex) * 1.5;
             }

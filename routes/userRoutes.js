@@ -19,9 +19,9 @@ const {
     logoutDevice,
     getSessionHistory,
     getDeviceSessionHistory,
-    getSearchHistory,
     getRecentlyOpenedItems,
     validateReferralCode,
+    syncUserInfo,
 } = require('../controllers/user.controller');
 const {
     validateRequestOtp,
@@ -96,6 +96,9 @@ router.post('/devices/logout', authenticateUser, validateLogoutDevice, logoutDev
 
 // Route to upload avatar
 router.post('/avatar', authenticateUser, upload.single('avatar'), validateUploadAvatar, uploadAvatar);
+
+// Route to sync user information
+router.get('/sync', authenticateUser, syncUserInfo);
 
 // Route to get users with pagination and filters
 router.get('/', authenticateUser, validateGetUsers, getUsers);

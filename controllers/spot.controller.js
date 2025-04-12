@@ -198,12 +198,12 @@ exports.getRecommendedSpots = async (req, res) => {
             success: true,
             ...result
         });
-    } catch (error) {
-        console.error('Error getting recommended spots:', error);
+    } catch (err) {
+        console.error('Error getting recommended spots:', err);
         res.status(500).json({
             success: false,
-            message: 'Error retrieving recommended spots',
-            error: error.message
+            message: 'Failed to get recommended spots',
+            error: err.message
         });
     }
 };

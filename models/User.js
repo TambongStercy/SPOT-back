@@ -71,8 +71,6 @@ const userSchema = new mongoose.Schema({
         default: 'user'
     },
     avatar: String,
-    fcmtoken: String,
-    token: String
 }, {
     timestamps: true
 });

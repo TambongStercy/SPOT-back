@@ -51,6 +51,7 @@ v1Router.use('/user-activity', require('./routes/userActivityRoutes'));
 v1Router.use('/points', require('./routes/pointTransactionRoutes'));
 v1Router.use('/referrals', require('./routes/referralRoutes'));
 v1Router.use('/support', require('./routes/chatRoutes'));
+v1Router.use('/test', require('./routes/testRoutes'));
 
 // Mount v1 routes
 app.use('/api/v1', v1Router);
